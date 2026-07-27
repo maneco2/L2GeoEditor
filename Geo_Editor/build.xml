@@ -53,6 +53,13 @@
 			<manifest>
 				<attribute name="Main-Class" value="${main}" />
 				<attribute name="Class-Path" value="." />
+				<attribute name="Implementation-Title" value="L2GeoEditor" />
+				<attribute name="Implementation-Version" value="2.0.3.41" />
+				<attribute name="Implementation-Vendor" value="Maneco2" />
+				<attribute name="Specification-Title" value="Lineage II Geodata Editor" />
+				<attribute name="Specification-Version" value="2.0.3.41" />
+				<attribute name="Specification-Vendor" value="Maneco2" />
+				<attribute name="Built-By" value="Maneco2" />
 			</manifest>
 		</jar>
 	</target>

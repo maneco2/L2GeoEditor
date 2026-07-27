@@ -20,10 +20,25 @@ import java.io.File;
  * L2J project source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 @SuppressWarnings("serial")
 public final class GeoFileNotFoundException extends RuntimeException {
+	private final File _file;
+	private final boolean _l2j;
+
 	public GeoFileNotFoundException(final File file, final boolean l2j) {
-		super("Geo File " + (l2j ? "L2j not found '" + file + "'" : "L2Off not found"));
+		super((l2j ? "L2J" : "L2Off") + " geodata file not found: " + file.getPath());
+		_file = file;
+		_l2j = l2j;
+	}
+
+	public File getFile() {
+		return _file;
+	}
+
+	public boolean isL2j() {
+		return _l2j;
 	}
 }

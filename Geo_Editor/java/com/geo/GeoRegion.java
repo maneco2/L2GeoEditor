@@ -30,8 +30,10 @@ import java.io.OutputStream;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public final class GeoRegion {
 	public static final byte getType(final GeoReader reader, final boolean l2j) {
@@ -84,6 +86,9 @@ public final class GeoRegion {
 	private volatile boolean _layerCountsDirty = true;
 	private volatile long _totalLayerCount;
 	private volatile long[] _layerCountsByType = new long[3];
+	private volatile boolean _modified;
+	private int _unloadBlockIndex;
+	private long _discardedLayerCount;
 	private GeoByteBuffer[][] _geoBlocksData;
 
 	public GeoRegion(final int regionX, final int regionY, final GeoReader reader, final boolean l2j, final File file) {
@@ -154,6 +159,7 @@ public final class GeoRegion {
 		block.unload();
 		_geoBlocks[blockX][blockY] = convertedBlock;
 		_layerCountsDirty = true;
+		_modified = true;
 	}
 
 	public final void convertBlock(final int blockX, final int blockY, final byte type) {
@@ -168,6 +174,7 @@ public final class GeoRegion {
 		block.unload();
 		_geoBlocks[blockX][blockY] = readBlock(blockX, blockY, reader, true);
 		_layerCountsDirty = true;
+		_modified = true;
 	}
 
 	public final void restoreBlock(final int blockX, final int blockY) {
@@ -273,7 +280,7 @@ public final class GeoRegion {
 		final int blockY = GeoEngine.getBlockXY(geoY);
 		_geoBlocks[blockX][blockY] = block;
 		_layerCountsDirty = true;
-		;
+		_modified = true;
 	}
 
 	public final int nGetLayerCount(final int geoX, final int geoY) {
@@ -288,7 +295,25 @@ public final class GeoRegion {
 		final GeoCell added = _geoBlocks[blockX][blockY].addLayer(geoX, geoY, heightAndNSWE);
 		if (added != null)
 			_layerCountsDirty = true;
+		if (added != null)
+			_modified = true;
 		return added;
+	}
+
+	public final boolean isModified() {
+		return _modified;
+	}
+
+	public final void markModified() {
+		_modified = true;
+	}
+
+	public final void markSaved() {
+		_modified = false;
+	}
+
+	public final void refreshModifiedState() {
+		_modified = !allDataEqual();
 	}
 
 	public final void saveTo(final OutputStream os, final boolean l2j, final DialogSave observ) throws IOException {
@@ -311,21 +336,59 @@ public final class GeoRegion {
 	}
 
 	public final void unload() {
-		GeoBlock[] block1D;
-		GeoByteBuffer[] geoBlocksData1D;
-		for (int blockX = GeoEngine.GEO_REGION_SIZE, blockY; blockX-- > 0;) {
-			block1D = _geoBlocks[blockX];
-			geoBlocksData1D = _geoBlocksData[blockX];
-			for (blockY = GeoEngine.GEO_REGION_SIZE; blockY-- > 0;) {
-				block1D[blockY].unload();
-				block1D[blockY] = null;
-				geoBlocksData1D[blockY] = null;
-			}
-			_geoBlocks[blockX] = null;
-			_geoBlocksData[blockX] = null;
+		while (!unloadStep(GeoEngine.GEO_REGION_SIZE * GeoEngine.GEO_REGION_SIZE)) {
+			// A full unload intentionally consumes every remaining block.
 		}
+	}
+
+	/**
+	 * Releases the complete region graph in constant time after the renderer has
+	 * detached it. The garbage collector can then reclaim blocks and cells without
+	 * a multi-million-element clearing loop on the OpenGL thread.
+	 */
+	public final void releaseForDiscard() {
+		if (_geoBlocks == null)
+			return;
+		_discardedLayerCount = _layerCountsDirty ? 0L : _totalLayerCount;
 		_geoBlocks = null;
 		_geoBlocksData = null;
+		_unloadBlockIndex = GeoEngine.GEO_REGION_SIZE * GeoEngine.GEO_REGION_SIZE;
+	}
+
+	/**
+	 * Releases at most {@code maxBlocks} blocks. This allows the render thread to
+	 * spread expensive multilayer cleanup across frames.
+	 *
+	 * @return {@code true} when the complete region has been released
+	 */
+	public final boolean unloadStep(final int maxBlocks) {
+		if (_geoBlocks == null)
+			return true;
+
+		final int blockCount = GeoEngine.GEO_REGION_SIZE * GeoEngine.GEO_REGION_SIZE;
+		final int limit = Math.min(blockCount, _unloadBlockIndex + Math.max(1, maxBlocks));
+		while (_unloadBlockIndex < limit) {
+			final int blockX = _unloadBlockIndex / GeoEngine.GEO_REGION_SIZE;
+			final int blockY = _unloadBlockIndex % GeoEngine.GEO_REGION_SIZE;
+			final GeoBlock block = _geoBlocks[blockX][blockY];
+			if (block != null) {
+				_discardedLayerCount += block.getCells().length;
+				block.unload();
+				_geoBlocks[blockX][blockY] = null;
+				_geoBlocksData[blockX][blockY] = null;
+			}
+			_unloadBlockIndex++;
+		}
+		if (_unloadBlockIndex < blockCount)
+			return false;
+
+		_geoBlocks = null;
+		_geoBlocksData = null;
+		return true;
+	}
+
+	public final long getDiscardedLayerCount() {
+		return _discardedLayerCount;
 	}
 
 	public final boolean dataEqualFor(final GeoBlock block) {

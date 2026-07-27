@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Geo_Editor/src/assets/branding/readme-banner.png" alt="GeoEditor — Lineage II Geodata Editor">
+  <img src="Geo_Editor/src/assets/branding/readme-banner.png" alt="GeoEditor - Lineage II Geodata Editor">
 </p>
 
 <p align="center">

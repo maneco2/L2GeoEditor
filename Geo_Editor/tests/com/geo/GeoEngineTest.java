@@ -26,6 +26,7 @@ public final class GeoEngineTest {
         coordinateConventions();
         indexesAndRegions();
         heightsAndNswe();
+        blockedDirectionMasks();
         movementPermissions();
         antiCornerCutRules();
         System.out.println("GeoEngineTest OK - assertions=" + assertions);
@@ -96,6 +97,17 @@ public final class GeoEngineTest {
         check(GeoEngine.checkNSWE(GeoEngine.SOUTHEAST, 0, 0, 1, 1), "south-east permitted");
         check(GeoEngine.checkNSWE(GeoEngine.SOUTHWEST, 0, 0, -1, 1), "south-west permitted");
         check(GeoEngine.checkNSWE(GeoEngine.NSWE_ALL, 0, 0, 1, 1), "all directions permitted");
+    }
+
+    private static void blockedDirectionMasks() {
+        check(GeoEngine.invertNSWE(GeoEngine.NSWE_NONE) == GeoEngine.NSWE_ALL,
+                "no blocked directions stores all directions");
+        check(GeoEngine.invertNSWE(GeoEngine.NORTH) == GeoEngine.NNORTH,
+                "blocked north stores every direction except north");
+        check(GeoEngine.invertNSWE(GeoEngine.SOUTH) == GeoEngine.NSOUTH,
+                "blocked south stores every direction except south");
+        check(GeoEngine.invertNSWE(GeoEngine.invertNSWE(GeoEngine.NORTHWEST)) == GeoEngine.NORTHWEST,
+                "blocked mask conversion is reversible");
     }
 
     private static void antiCornerCutRules() {

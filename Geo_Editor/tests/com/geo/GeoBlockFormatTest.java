@@ -19,7 +19,12 @@ import com.geo.blocks.GeoBlockFlat;
 import com.geo.blocks.GeoBlockMultiLayer;
 import com.util.GeoByteBuffer;
 
-/** Synthetic format tests for the three L2J block types. */
+/**
+ * Synthetic format tests for the three L2J block types.
+ *
+ * @author Maneco2
+ * @version 1.1
+ */
 public final class GeoBlockFormatTest {
     private static final short HEIGHT_AND_NSWE = GeoEngine.convertHeightToHeightAndNSWEALL((short) 128);
 
@@ -28,6 +33,7 @@ public final class GeoBlockFormatTest {
         complexBlock();
         multilayerBlock();
         multilayerSelection();
+        multilayerAddedLayerOrdering();
         serializationRoundTrips();
         fullFlatRegion();
         mixedRegion();
@@ -89,6 +95,14 @@ public final class GeoBlockFormatTest {
         check(block.nGetLayerCount(0, 0) == 2, "multilayer two levels");
         check(block.nGetCell(0, 0, 70).getHeight() == 64, "selected lower height");
         check(block.nGetCell(0, 0, 180).getHeight() == 192, "selected upper height");
+    }
+
+    private static void multilayerAddedLayerOrdering() {
+        final GeoBlockMultiLayer block = new GeoBlockMultiLayer(createTwoLayerData(), 0, 0, true);
+        block.addLayer(0, 0, GeoEngine.convertHeightToHeightAndNSWEALL((short) 128));
+        check(block.nGetLayerCount(0, 0) == 3, "added multilayer level");
+        check(block.nGetCell(0, 0, 120).getHeight() == 128, "added layer remains height sorted");
+        check(block.nGetCell(0, 0, 180).getHeight() == 192, "upper layer remains selectable");
     }
 
     private static void serializationRoundTrips() {
@@ -175,6 +189,26 @@ public final class GeoBlockFormatTest {
                 "last region block type");
         check(region.nGetCell(region.getGeoX(255) + 7, region.getGeoY(255) + 7, 256).getHeight() == 256,
                 "last region cell height");
+        check(!region.isModified(), "new region clean");
+        region.convertBlock(0, 0, GeoEngine.GEO_BLOCK_TYPE_COMPLEX);
+        check(region.isModified(), "converted region modified");
+        region.restoreBlock(0, 0);
+        region.refreshModifiedState();
+        check(!region.isModified(), "restored region clean");
+        region.markModified();
+        check(region.isModified(), "explicit region modification");
+        region.markSaved();
+        check(!region.isModified(), "saved region clean");
+        check(!region.unloadStep(64), "incremental unload keeps remaining blocks");
+        int unloadSteps = 1;
+        while (true) {
+            unloadSteps++;
+            if (region.unloadStep(64))
+                break;
+        }
+        check(unloadSteps == blocks / 64, "incremental unload block budget");
+        check(region.getDiscardedLayerCount() == blocks, "incremental unload layer count");
+        check(region.unloadStep(64), "completed region remains unloaded");
     }
 
     private static void mixedRegion() {
@@ -268,6 +302,10 @@ public final class GeoBlockFormatTest {
                 "mixed multilayer block");
         check(((GeoBlockMultiLayer) region.getGeoBlocks()[2][0]).getTotalLayerCount() == 128,
                 "mixed multilayer layer total");
+		final long totalLayers = region.getTotalLayerCount();
+		region.releaseForDiscard();
+		check(region.getGeoBlocks() == null, "fast discard retained the region graph");
+		check(region.getDiscardedLayerCount() == totalLayers, "fast discard layer count");
     }
 
     private static void blockParseBaseline() {

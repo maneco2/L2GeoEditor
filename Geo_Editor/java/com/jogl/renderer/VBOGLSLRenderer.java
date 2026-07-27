@@ -23,6 +23,7 @@ import com.jogl.GLCellRenderer;
 import com.jogl.GLDisplay;
 import com.jogl.shader.uniform.GLUniformVec1i;
 import com.jogl.shader.uniform.GLUniformVec1iv;
+import com.jogl.shader.uniform.GLUniformVec2iv;
 import com.jogl.shader.uniform.GLUniformVec2f;
 import com.jogl.shader.uniform.GLUniformVec4fv;
 import com.swing.FrameMain;
@@ -38,6 +39,8 @@ import com.jogamp.common.nio.Buffers;
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.2
  */
 public final class VBOGLSLRenderer extends GLCellRenderer {
 	public static final boolean isAvailable(final GL2 gl) {
@@ -50,13 +53,15 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 	private int _vboIndex;
 	private int _vboVertex;
 	private int _vboTexture;
+	private long _initialGeometryPreparationMicros;
 	private long _lastBufferUploadMicros;
+	private long _frameGeometryPreparationNanos;
+	private long _frameUniformUploadNanos;
 
 	private GLUniformVec4fv _cellColors;
 	private GLUniformVec2f _blockPosition;
-	private GLUniformVec1iv _blockData;
+	private GLUniformVec2iv _blockData;
 	private GLUniformVec1iv _cellMask;
-	private GLUniformVec1iv _cellPositions;
 	private GLUniformVec1i _blockType;
 	private GLUniformVec1i _cellData;
 
@@ -68,6 +73,7 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		if (!super.init(gl))
 			return false;
 
+		final long geometryStart = System.nanoTime();
 		final int[] temp = new int[3];
 		gl.glGenBuffers(3, temp, 0);
 		_vboIndex = temp[0];
@@ -102,6 +108,7 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		indexBuffer.flip();
 		vertexBuffer.flip();
 		textureBuffer.flip();
+		_initialGeometryPreparationMicros = (System.nanoTime() - geometryStart) / 1_000L;
 
 		final long uploadStart = System.nanoTime();
 		gl.glBindBuffer(GL2.GL_ELEMENT_ARRAY_BUFFER, _vboIndex);
@@ -122,11 +129,10 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 
 		_cellColors = getShader().getUniformVec4fv(gl, "cell_colors", 13);
 		_blockPosition = getShader().getUniformVec2f(gl, "block_position");
-		_blockData = getShader().getUniformVec1iv(gl, "block_data", 64);
+		_blockData = getShader().getUniformVec2iv(gl, "block_data", 64);
 		_cellMask = getShader().getUniformVec1iv(gl, "cell_mask", 64);
 		_blockType = getShader().getUniformVec1i(gl, "block_type");
 		_cellData = getShader().getUniformVec1i(gl, "cell_data");
-		_cellPositions = getShader().getUniformVec1iv(gl, "cell_positions", 64);
 		return true;
 	}
 
@@ -134,11 +140,25 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		return _lastBufferUploadMicros;
 	}
 
+	public final long getInitialGeometryPreparationMicros() {
+		return _initialGeometryPreparationMicros;
+	}
+
+	public final long getFrameGeometryPreparationMicros() {
+		return _frameGeometryPreparationNanos / 1_000L;
+	}
+
+	public final long getFrameUniformUploadMicros() {
+		return _frameUniformUploadNanos / 1_000L;
+	}
+
 	/**
 	 * @see g3deditor.jogl.GLCellRenderer#enableRender(javax.media.opengl.GL2)
 	 */
 	@Override
 	public final void enableRender(final GL2 gl) {
+		_frameGeometryPreparationNanos = 0L;
+		_frameUniformUploadNanos = 0L;
 		super.enableRender(gl);
 
 		gl.glEnableClientState(GL2.GL_TEXTURE_COORD_ARRAY);
@@ -186,15 +206,20 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		GeoCell cell;
 		switch (block.getType()) {
 		case GeoEngine.GEO_BLOCK_TYPE_FLAT: {
+			final long preparationStart = System.nanoTime();
 			cell = block.nGetCellByLayer(0, 0, 0);
 			_cellData.set((FrameMain.getInstance().isSelectedGeoCell(cell) ? 12 : cell.getSelectionState().ordinal())
 					| cell.getHeight() << 4);
+			_frameGeometryPreparationNanos += System.nanoTime() - preparationStart;
+			final long uploadStart = System.nanoTime();
 			_cellData.update(gl);
+			_frameUniformUploadNanos += System.nanoTime() - uploadStart;
 			gl.glDrawElements(GL2.GL_TRIANGLES, GEOMETRY_INDICES_DATA_LENGTH, GL2.GL_UNSIGNED_SHORT, 0);
 			break;
 		}
 
 		case GeoEngine.GEO_BLOCK_TYPE_COMPLEX: {
+			final long preparationStart = System.nanoTime();
 			_blockData.clear();
 			_cellMask.clear();
 			for (int x = 0, y; x < 8; x++) {
@@ -202,12 +227,15 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 					cell = block.nGetCellByLayer(x, y, 0);
 
 					_blockData.put((FrameMain.getInstance().isSelectedGeoCell(cell) ? 12
-							: 3 + cell.getSelectionState().ordinal()) | cell.getHeightAndNSWE() << 4);
+							: 3 + cell.getSelectionState().ordinal()) | cell.getHeightAndNSWE() << 4, 0);
 					_cellMask.put(selector.isCellInsideCircularGrid(cell) ? 1 : 0);
 				}
 			}
+			_frameGeometryPreparationNanos += System.nanoTime() - preparationStart;
+			final long uploadStart = System.nanoTime();
 			_blockData.update(gl);
 			_cellMask.update(gl);
+			_frameUniformUploadNanos += System.nanoTime() - uploadStart;
 			gl.glDrawElements(GL2.GL_TRIANGLES, GEOMETRY_INDICES_DATA_LENGTH * 64, GL2.GL_UNSIGNED_SHORT,
 					GEOMETRY_INDICES_DATA_LENGTH * Buffers.SIZEOF_SHORT);
 			break;
@@ -215,26 +243,30 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 
 		case GeoEngine.GEO_BLOCK_TYPE_MULTILAYER: {
 			_blockData.clear();
-			_cellPositions.clear();
+			long preparationStart = System.nanoTime();
 			for (int i = selector.getElementsToRender(); i-- > 0;) {
 				if (!_blockData.hasRemaining()) {
+					_frameGeometryPreparationNanos += System.nanoTime() - preparationStart;
+					final long uploadStart = System.nanoTime();
 					_blockData.update(gl);
-					_cellPositions.update(gl);
+					_frameUniformUploadNanos += System.nanoTime() - uploadStart;
 					gl.glDrawElements(GL2.GL_TRIANGLES, GEOMETRY_INDICES_DATA_LENGTH * 64, GL2.GL_UNSIGNED_SHORT,
 							GEOMETRY_INDICES_DATA_LENGTH * Buffers.SIZEOF_SHORT);
+					preparationStart = System.nanoTime();
 				}
 
 				cell = selector.getElementToRender(i);
 				_blockData.put((FrameMain.getInstance().isSelectedGeoCell(cell) ? 12
 						: (GLDisplay.getInstance().getSelectionBox().isInside(cell) ? 9 : 6)
 								+ cell.getSelectionState().ordinal())
-						| cell.getHeightAndNSWE() << 4);
-				_cellPositions.put(cell.getCellX() | cell.getCellY() << 16);
+						| cell.getHeightAndNSWE() << 4, cell.getCellX() | cell.getCellY() << 16);
 			}
+			_frameGeometryPreparationNanos += System.nanoTime() - preparationStart;
 
 			if (!_blockData.isEmpty()) {
+				final long uploadStart = System.nanoTime();
 				_blockData.update(gl);
-				_cellPositions.update(gl);
+				_frameUniformUploadNanos += System.nanoTime() - uploadStart;
 				gl.glDrawElements(GL2.GL_TRIANGLES, GEOMETRY_INDICES_DATA_LENGTH * _blockData.getRemaining(),
 						GL2.GL_UNSIGNED_SHORT, GEOMETRY_INDICES_DATA_LENGTH * Buffers.SIZEOF_SHORT);
 			}

@@ -49,6 +49,8 @@ import javax.swing.filechooser.FileFilter;
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 @SuppressWarnings("serial")
 public final class DialogSave extends JDialog implements ActionListener, MouseListener {
@@ -327,6 +329,8 @@ public final class DialogSave extends JDialog implements ActionListener, MouseLi
 			JOptionPane.showMessageDialog(FrameMain.getInstance(),
 					"Failed storing " + file + "\n" + failure.getMessage(), "Error",
 					JOptionPane.INFORMATION_MESSAGE);
+		} else {
+			_region.markSaved();
 		}
 		onSaveComplete();
 	}
@@ -354,7 +358,11 @@ public final class DialogSave extends JDialog implements ActionListener, MouseLi
 
 	@Override
 	public final void mouseClicked(final MouseEvent e) {
-		if ((e.getSource() == _fieldFile) && (_fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION)) {
+		if (e.getSource() != _fieldFile)
+			return;
+
+		ThemeManager.refreshDetached(_fileChooser);
+		if (_fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
 			final File file = _fileChooser.getSelectedFile();
 			final boolean enabled = ((file != null) && FILE_FILTER.accept(file));
 

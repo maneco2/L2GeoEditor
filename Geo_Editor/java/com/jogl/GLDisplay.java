@@ -21,6 +21,7 @@ import com.geo.GeoBlockSelector.GeoBlockEntry;
 import com.geo.GeoCell;
 import com.geo.GeoEngine;
 import com.geo.GeoRegion;
+import com.geo.RegionDiscardPolicy;
 import com.geo.RegionLoadManager;
 import com.jogl.GLCellRenderSelector.GLSubRenderSelector;
 import com.jogl.GLGUIRenderer.GLText;
@@ -29,15 +30,20 @@ import com.jogl.renderer.VBOGLSLRenderer;
 import com.swing.FrameMain;
 import com.util.FastArrayList;
 import com.util.PerformanceMetrics;
+import com.util.MemoryUsage;
 
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import javax.media.opengl.GL2;
@@ -51,9 +57,12 @@ import javax.media.opengl.glu.GLU;
  * 
  * @author Forsaiken aka Patrick
  * @author Maneco2
+ * @version 1.1
  */
 public final class GLDisplay implements GLEventListener {
+	private static final DateTimeFormatter REPORT_TIMESTAMP = DateTimeFormatter.ofPattern("dd-MM-yyyy_HH-mm-ss");
 	private static final int NEIGHBOR_TEXTURE_MAX_SIZE = 1024;
+	private static final int DETAILED_AUXILIARY_TERRAINS = 8;
 	private static final long NANOS_IN_MILLISECOND = TimeUnit.NANOSECONDS.convert(1, TimeUnit.MILLISECONDS);
 	private static final long NANOS_IN_SECOND = TimeUnit.NANOSECONDS.convert(1, TimeUnit.SECONDS);
 
@@ -81,7 +90,7 @@ public final class GLDisplay implements GLEventListener {
 
 	private static final float VIEW_ANGLE = 45f;
 	private static final float VIEW_Z_NEAR = 1f;
-	/** Covers the complete bounded 3x3 streaming window. */
+	/** Covers the complete bounded auxiliary streaming window. */
 	private static final float VIEW_Z_FAR = 8192f;
 
 	private final GLCanvas _canvas;
@@ -101,9 +110,21 @@ public final class GLDisplay implements GLEventListener {
 	private final GLText _worldPositionText;
 	private final GLText _geoPositionText;
 	private final PerformanceMetrics _performanceMetrics;
+	private final ConcurrentLinkedQueue<PendingRegionDiscard> _pendingRegionDiscards =
+			new ConcurrentLinkedQueue<>();
 
 	private GLCellRenderer _renderer;
 	private GeoCell _prevPick;
+
+	private static final class PendingRegionDiscard {
+		private final GeoRegion region;
+		private final CompletableFuture<Void> completion = new CompletableFuture<>();
+		private long elapsedNanos;
+
+		private PendingRegionDiscard(final GeoRegion region) {
+			this.region = region;
+		}
+	}
 
 	private GLU _glu;
 	private int _width;
@@ -115,6 +136,7 @@ public final class GLDisplay implements GLEventListener {
 	private int _lastCallsPerFrame;
 	private int _neighborPrepareCooldown;
 	private boolean _neighborTexturedMode;
+	private int _neighborTextureLimit = -1;
 
 	private GLDisplay(final GLCanvas canvas) {
 		_canvas = canvas;
@@ -185,15 +207,34 @@ public final class GLDisplay implements GLEventListener {
 		return _performanceMetrics;
 	}
 
+	/** Queues a region for renderer detachment and constant-time graph release. */
+	public final CompletableFuture<Void> queueRegionDiscard(final GeoRegion region) {
+		if (region == null)
+			return CompletableFuture.completedFuture(null);
+		final PendingRegionDiscard pending = new PendingRegionDiscard(region);
+		_pendingRegionDiscards.add(pending);
+		return pending.completion;
+	}
+
 	public final Path exportPerformanceReport() {
+		return exportPerformanceReport(Path.of("./logs", "performance-last.txt"));
+	}
+
+	/** Saves a dated runtime report without stopping the editor. */
+	public final Path exportDatedPerformanceReport() {
+		final String fileName = "performance-" + REPORT_TIMESTAMP.format(LocalDateTime.now()) + "_neighbors-"
+				+ Config.MAX_NEIGHBOR_TEXTURES + ".txt";
+		return exportPerformanceReport(Path.of("./logs", fileName));
+	}
+
+	private Path exportPerformanceReport(final Path report) {
 		try {
-			final Path directory = Path.of("./logs");
-			Files.createDirectories(directory);
-			final Path report = directory.resolve("performance-last.txt");
+			Files.createDirectories(report.getParent());
 			final String scenario = "scenario.grid=" + (Config.CIRCULAR_GEODATA_GRID ? "circular" : "square")
 					+ System.lineSeparator() + "scenario.fullMap=" + Config.FULL_MAP
 					+ System.lineSeparator() + "scenario.fullTexturedTerrain=" + Config.FULL_TEXTURED_TERRAIN
 					+ System.lineSeparator() + "scenario.visibleGridRange=" + Config.VIS_GRID_RANGE
+					+ System.lineSeparator() + "scenario.maxVisibleNeighbors=" + Config.MAX_NEIGHBOR_TEXTURES
 					+ System.lineSeparator() + "callsPerFrame=" + _lastCallsPerFrame
 					+ System.lineSeparator();
 			Files.writeString(report, scenario + PerformanceMetrics.formatReport(_performanceMetrics.snapshot()),
@@ -272,18 +313,15 @@ public final class GLDisplay implements GLEventListener {
 			_elementsPS = 0;
 			_fpsText.setText("Fps:   " + roundFps(fps));
 			_callsText.setText("Calls: " + elements);
+			_memoryText.setText(MemoryUsage.formatHud(MemoryUsage.capture()));
 		}
 
 		_worldPositionText.setText(
 				"World-Pos XYZ: " + _camera.getWorldX() + ", " + _camera.getWorldY() + ", " + _camera.getWorldZ());
 		_geoPositionText
 				.setText("Geo-Pos XYZ: " + _camera.getGeoX() + ", " + _camera.getGeoY() + ", " + _camera.getGeoZ());
-		_memoryText.setText("Memory: "
-				+ (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024l / 1024l + "mb");
 		final PerformanceMetrics.Snapshot metrics = _performanceMetrics.snapshot();
 		_performanceMetrics.setSelectionParallelism(_renderSelector.getSelectionParallelism());
-		if (_renderer instanceof VBOGLSLRenderer vboRenderer)
-			_performanceMetrics.recordBufferUpload(vboRenderer.getLastBufferUploadMicros());
 		_performanceText.setText("Frames: " + metrics.frames());
 		_streamingText.setText("Regions: " + metrics.loadedRegions());
 
@@ -315,6 +353,7 @@ public final class GLDisplay implements GLEventListener {
 		_terrain.render(gl);
 		renderNeighborTerrains(gl, GeoEngine.getInstance().getLoadedRegionsSnapshot(),
 				GeoEngine.getInstance().getActiveRegion());
+		processPendingRegionDiscards();
 
 		final String effectiveRenderer = Config.CELL_RENDERER;
 		if (_renderer == null) {
@@ -385,6 +424,12 @@ public final class GLDisplay implements GLEventListener {
 			}
 
 			_renderer.disableRender(gl);
+			if (_renderer instanceof VBOGLSLRenderer vboRenderer) {
+				_performanceMetrics.recordInitialVboPreparation(vboRenderer.getInitialGeometryPreparationMicros());
+				_performanceMetrics.recordBufferUpload(vboRenderer.getLastBufferUploadMicros());
+				_performanceMetrics.recordRenderPreparation(vboRenderer.getFrameGeometryPreparationMicros(),
+						vboRenderer.getFrameUniformUploadMicros());
+			}
 		}
 
 		if (!Config.SHOW_GEODATA_GRID) {
@@ -478,10 +523,15 @@ public final class GLDisplay implements GLEventListener {
 			_neighborPrepareCooldown = 0;
 			_neighborTexturedMode = texturedNeighbors;
 		}
+		if (_neighborTextureLimit != Config.MAX_NEIGHBOR_TEXTURES) {
+			_neighborTextureLimit = Config.MAX_NEIGHBOR_TEXTURES;
+			_neighborPrepareCooldown = 0;
+		}
 		if (!Config.AUXILIARY_TERRAINS && !texturedNeighbors) {
 			for (final GLTerrain terrain : _neighborTerrains.values())
 				terrain.dispose(gl);
 			_neighborTerrains.clear();
+			_performanceMetrics.setVisibleNeighborCounts(0, Config.MAX_NEIGHBOR_TEXTURES);
 			return;
 		}
 		final Iterator<Map.Entry<RegionLoadManager.RegionKey, GLTerrain>> iterator =
@@ -494,17 +544,23 @@ public final class GLDisplay implements GLEventListener {
 				iterator.remove();
 			}
 		}
+		trimNeighborTerrains(gl, Config.MAX_NEIGHBOR_TEXTURES);
 
 		if (_neighborPrepareCooldown > 0)
 			_neighborPrepareCooldown--;
+		long auxiliaryVboMicros = 0L;
+		long auxiliaryVboPreparationMicros = 0L;
+		long auxiliaryVboUploadMicros = 0L;
+		int auxiliaryVboCount = 0;
 		for (final Map.Entry<RegionLoadManager.RegionKey, GeoRegion> entry : loadedRegions.entrySet()) {
 			if (entry.getValue() == activeRegion)
 				continue;
 			GLTerrain terrain = _neighborTerrains.get(entry.getKey());
-			if (terrain == null && (!texturedNeighbors || texturedNeighborCount() < Config.MAX_NEIGHBOR_TEXTURES)) {
+			if (terrain == null && _neighborTerrains.size() < Config.MAX_NEIGHBOR_TEXTURES) {
 				if (_neighborPrepareCooldown > 0)
 					continue;
-				terrain = new GLTerrain();
+				terrain = new GLTerrain(_neighborTerrains.size() < DETAILED_AUXILIARY_TERRAINS
+						? GLTerrain.TerrainDetailLevel.MEDIUM : GLTerrain.TerrainDetailLevel.LOW);
 				terrain.init(gl);
 				terrain.setStreamingPreview(!texturedNeighbors);
 				terrain.setTextureMaxSize(texturedNeighbors ? NEIGHBOR_TEXTURE_MAX_SIZE : 0);
@@ -519,15 +575,52 @@ public final class GLDisplay implements GLEventListener {
 			terrain.setEnabled(true);
 			terrain.setWireframe(!texturedNeighbors);
 			terrain.render(gl);
+			final GLTerrain.VboUpdateSample vboSample = terrain.consumeLastVboUpdate();
+			final long vboMicros = vboSample.preparationMicros() + vboSample.uploadMicros();
+			if (vboMicros > 0L) {
+				auxiliaryVboMicros += vboMicros;
+				auxiliaryVboPreparationMicros += vboSample.preparationMicros();
+				auxiliaryVboUploadMicros += vboSample.uploadMicros();
+				auxiliaryVboCount++;
+			}
+		}
+		if (auxiliaryVboCount > 0)
+			_performanceMetrics.recordAuxiliaryVboUpdates(auxiliaryVboMicros,
+					auxiliaryVboPreparationMicros, auxiliaryVboUploadMicros, auxiliaryVboCount);
+		_performanceMetrics.setVisibleNeighborCounts(_neighborTerrains.size(), Config.MAX_NEIGHBOR_TEXTURES);
+	}
+
+	/** Immediately releases the farthest auxiliary terrain when the live limit is reduced. */
+	private void trimNeighborTerrains(final GL2 gl, final int limit) {
+		while (_neighborTerrains.size() > limit) {
+			RegionLoadManager.RegionKey farthestKey = null;
+			long farthestDistance = Long.MIN_VALUE;
+			for (final RegionLoadManager.RegionKey key : _neighborTerrains.keySet()) {
+				final long dx = GeoEngine.getGeoXY(key.x(), GeoEngine.GEO_REGION_SIZE / 2) - _camera.getGeoX();
+				final long dy = GeoEngine.getGeoXY(key.y(), GeoEngine.GEO_REGION_SIZE / 2) - _camera.getGeoY();
+				final long distance = dx * dx + dy * dy;
+				if (distance > farthestDistance) {
+					farthestDistance = distance;
+					farthestKey = key;
+				}
+			}
+			if (farthestKey == null)
+				return;
+			_neighborTerrains.remove(farthestKey).dispose(gl);
 		}
 	}
 
-	private int texturedNeighborCount() {
-		int count = 0;
-		for (final GLTerrain terrain : _neighborTerrains.values())
-			if (!terrain.getWireframe())
-				count++;
-		return count;
+	private void processPendingRegionDiscards() {
+		PendingRegionDiscard pending;
+		int remaining = RegionDiscardPolicy.frameBudget(_pendingRegionDiscards.size());
+		while (remaining-- > 0 && (pending = _pendingRegionDiscards.poll()) != null) {
+			final long start = System.nanoTime();
+			pending.region.releaseForDiscard();
+			pending.elapsedNanos += System.nanoTime() - start;
+			_performanceMetrics.recordRegionDiscard(pending.elapsedNanos / 1_000L,
+					pending.region.getDiscardedLayerCount());
+			pending.completion.complete(null);
+		}
 	}
 
 	/**

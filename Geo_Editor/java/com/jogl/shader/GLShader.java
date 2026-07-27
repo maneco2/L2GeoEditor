@@ -18,6 +18,7 @@ import com.jogl.shader.uniform.GLUniformVec1f;
 import com.jogl.shader.uniform.GLUniformVec1fv;
 import com.jogl.shader.uniform.GLUniformVec1i;
 import com.jogl.shader.uniform.GLUniformVec1iv;
+import com.jogl.shader.uniform.GLUniformVec2iv;
 import com.jogl.shader.uniform.GLUniformVec2f;
 import com.jogl.shader.uniform.GLUniformVec3fv;
 import com.jogl.shader.uniform.GLUniformVec4fv;
@@ -38,8 +39,10 @@ import com.jogamp.opengl.util.texture.Texture;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public final class GLShader {
 	private static final String readShader(final String file, final String type) {
@@ -227,6 +230,19 @@ public final class GLShader {
 					"Unexpected uniform type: " + uniform.getClass() + ", expected: " + GLUniformVec1iv.class);
 		}
 		return (GLUniformVec1iv) uniform;
+	}
+
+	public final GLUniformVec2iv getUniformVec2iv(final GL2 gl, final String uniformName, final int numElements) {
+		GLUniform uniform = _uniforms.get(uniformName);
+		if (uniform == null) {
+			uniform = new GLUniformVec2iv(uniformName, numElements);
+			uniform.init(gl, this);
+			_uniforms.put(uniformName, uniform);
+		} else if (!(uniform instanceof GLUniformVec2iv)) {
+			throw new RuntimeException(
+					"Unexpected uniform type: " + uniform.getClass() + ", expected: " + GLUniformVec2iv.class);
+		}
+		return (GLUniformVec2iv) uniform;
 	}
 
 	public final GLUniformVec2f getUniformVec2f(final GL2 gl, final String uniformName) {

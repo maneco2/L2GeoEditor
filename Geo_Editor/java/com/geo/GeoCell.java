@@ -18,8 +18,10 @@ import com.entity.SelectionState;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public abstract class GeoCell {
 	public static final GeoCell[] EMPTY_ARRAY = new GeoCell[0];
@@ -62,6 +64,11 @@ public abstract class GeoCell {
 
 	public final void unload() {
 		_block = null;
+	}
+
+	protected final void markModified() {
+		if (_block != null && _block.getRegion() != null)
+			_block.getRegion().markModified();
 	}
 
 	public abstract boolean isBig();

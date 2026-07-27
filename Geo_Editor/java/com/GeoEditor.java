@@ -34,6 +34,8 @@ import com.jogamp.opengl.util.Animator;
  * L2J project source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public final class GeoEditor {
 	public static final void main(final String[] args) {
@@ -42,7 +44,7 @@ public final class GeoEditor {
 
 		Config.load();
 
-		new Splash(3000, new Runnable() {
+		new Splash(1800, new Runnable() {
 			@Override
 			public final void run() {
 				System.out.println("OpenGL");

@@ -15,6 +15,7 @@
 package com.swing;
 
 import com.Config;
+import com.geo.RegionWindowPlan;
 import com.jogl.GLCellRenderSelector;
 import com.jogl.GLCellRenderer;
 import com.jogl.GLDisplay;
@@ -33,7 +34,10 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Hashtable;
 
@@ -49,8 +53,10 @@ import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
+import javax.swing.JSpinner;
+import javax.swing.JOptionPane;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.KeyStroke;
-import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.filechooser.FileFilter;
 
 /**
@@ -83,8 +89,6 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	}
 
 	private final JPanel _panelMisc;
-	private final DefaultLabel _labelLookAndFeel;
-	private final JComboBox<Object> _comboLookAndFeel;
 
 	private final JPanel _panelEditor;
 	private final JPanel _panelCheckButtons;
@@ -96,6 +100,8 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	private final JCheckBox _checkShowGeodataGrid;
 	private final JCheckBox _checkCircularGeodataGrid;
 	private final JCheckBox _checkFullTexturedTerrain;
+	private final DefaultLabel _labelCameraSpeed;
+	private final JSpinner _spinnerCameraSpeed;
 
 	private final DefaultLabel _labelCellRenderer;
 	private final JComboBox<Object> _comboCellRenderer;
@@ -107,6 +113,13 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	private final JSlider _sliderGridRange;
 	private final DefaultLabel _labelNeighborTextures;
 	private final JSlider _sliderNeighborTextures;
+	private final JPanel _panelPerformanceReports;
+	private final DefaultButton _buttonResetPerformanceMetrics;
+	private final DefaultButton _buttonSavePerformanceReport;
+	private final DefaultLabel _labelSelectionMoveMaxZ;
+	private final JSpinner _spinnerSelectionMoveMaxZ;
+	private final DefaultLabel _labelSelectionHeightStep;
+	private final JSpinner _spinnerSelectionHeightStep;
 
 	private final DialogColorChooser _dialogColor;
 	private final DefaultButton _buttonChooseColors;
@@ -123,10 +136,12 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	private final DefaultButton _buttonCancel;
 
 	private final JFileChooser _fileChooser;
+	private boolean _updatingControls;
+	private int _originalNeighborLimit;
 
 	public DialogConfig(final JFrame frame) {
 		super(frame, "Config", true);
-		setDefaultCloseOperation(JDialog.HIDE_ON_CLOSE);
+		setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
 
 		_fileChooser = new JFileChooser();
 		_fileChooser.setFileFilter(DIR_FILTER);
@@ -136,8 +151,6 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 
 		_panelMisc = new JPanel();
 		_panelMisc.setBorder(BorderFactory.createTitledBorder("Misc"));
-		_labelLookAndFeel = new DefaultLabel("LookAndFeel:");
-		_comboLookAndFeel = new JComboBox<Object>(Config.getInstalledLookAndFeels());
 
 		_panelEditor = new JPanel();
 		_panelEditor.setBorder(BorderFactory.createTitledBorder("Editor"));
@@ -150,13 +163,16 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_checkFullMap = new JCheckBox("Full Map (stream neighboring regions)");
 		_checkFullMap.setToolTipText("ON: load and cross neighboring regions. OFF: keep only the active region.");
 		_checkAuxiliaryTerrains = new JCheckBox("Auxiliary terrains");
-		_checkAuxiliaryTerrains.setToolTipText("Show the green terrain meshes of loaded neighboring regions.");
+		_checkAuxiliaryTerrains.setToolTipText("Load and show neighboring geodata without changing the active region.");
 		_checkShowGeodataGrid = new JCheckBox("Show Geodata Grid");
 		_checkShowGeodataGrid.setToolTipText("Show the editable geodata grid and enable mouse editing.");
 		_checkCircularGeodataGrid = new JCheckBox("Circular Geodata Grid (selectable)");
 		_checkCircularGeodataGrid.setToolTipText("Show and select geodata cells inside a circular area around the camera.");
 		_checkFullTexturedTerrain = new JCheckBox("Show full textured terrain");
 		_checkFullTexturedTerrain.setToolTipText("Show textured terrain for every loaded Full Map region.");
+		_labelCameraSpeed = new DefaultLabel("Camera movement speed (%):");
+		_labelCameraSpeed.setToolTipText("Adjust WASD/QE movement speed without changing the fast-move shortcut.");
+		_spinnerCameraSpeed = new JSpinner(new SpinnerNumberModel(Config.CAMERA_SPEED_PERCENT, 25, 400, 25));
 
 		_labelCellRenderer = new DefaultLabel("CellRenderer:");
 		_comboCellRenderer = new JComboBox<Object>();
@@ -189,11 +205,39 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		}
 		_sliderGridRange.setLabelTable(rangeTable);
 		_sliderGridRange.setPaintLabels(true);
-		_labelNeighborTextures = new DefaultLabel("Max textured neighbors:");
-		_sliderNeighborTextures = new JSlider(1, 8, Config.MAX_NEIGHBOR_TEXTURES);
+		_labelNeighborTextures = new DefaultLabel("Max visible neighbors:");
+		_sliderNeighborTextures = new JSlider(0, RegionWindowPlan.NEIGHBOR_OPTIONS.length - 1,
+				RegionWindowPlan.radiusForNeighborCount(Config.MAX_NEIGHBOR_TEXTURES));
+		final String neighborTextureHelp =
+				"Square auxiliary coverage: 0, 8, 24, 48, 80 or 120 neighboring regions.";
+		_labelNeighborTextures.setToolTipText(neighborTextureHelp);
+		_sliderNeighborTextures.setToolTipText(neighborTextureHelp);
 		_sliderNeighborTextures.setMajorTickSpacing(1);
 		_sliderNeighborTextures.setPaintTicks(true);
+		final Hashtable<Integer, DefaultLabel> neighborLabels = new Hashtable<>();
+		for (int index = 0; index < RegionWindowPlan.NEIGHBOR_OPTIONS.length; index++)
+			neighborLabels.put(index, new DefaultLabel(String.valueOf(RegionWindowPlan.NEIGHBOR_OPTIONS[index])));
+		_sliderNeighborTextures.setLabelTable(neighborLabels);
 		_sliderNeighborTextures.setPaintLabels(true);
+		_sliderNeighborTextures.addChangeListener(event -> {
+			if (!_updatingControls)
+				Config.MAX_NEIGHBOR_TEXTURES = selectedNeighborCount();
+		});
+		_panelPerformanceReports = new JPanel(new GridLayout(1, 2, 8, 0));
+		_buttonResetPerformanceMetrics = new DefaultButton("Reset metrics");
+		_buttonResetPerformanceMetrics.setToolTipText("Start a clean runtime performance measurement.");
+		_buttonResetPerformanceMetrics.addActionListener(this);
+		_buttonSavePerformanceReport = new DefaultButton("Save performance report");
+		_buttonSavePerformanceReport.setToolTipText("Save the current metrics without closing the editor.");
+		_buttonSavePerformanceReport.addActionListener(this);
+		_panelPerformanceReports.add(_buttonResetPerformanceMetrics);
+		_panelPerformanceReports.add(_buttonSavePerformanceReport);
+		_labelSelectionMoveMaxZ = new DefaultLabel("Arrow navigation max height difference (Z):");
+		_labelSelectionMoveMaxZ.setToolTipText("Arrow-key selection will not cross a height difference above this value.");
+		_spinnerSelectionMoveMaxZ = new JSpinner(new SpinnerNumberModel(Config.SELECTION_MOVE_MAX_Z, 0, 32760, 8));
+		_labelSelectionHeightStep = new DefaultLabel("Page Up/Down height step:");
+		_labelSelectionHeightStep.setToolTipText("Height changed by Page Up or Page Down, in multiples of 8.");
+		_spinnerSelectionHeightStep = new JSpinner(new SpinnerNumberModel(Config.SELECTION_HEIGHT_STEP, 8, 4096, 8));
 
 		_dialogColor = new DialogColorChooser(this);
 		_buttonChooseColors = new DefaultButton("Choose cell/block colors");
@@ -214,6 +258,12 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_buttonOk.addActionListener(this);
 		_buttonCancel = new DefaultButton("Cancel");
 		_buttonCancel.addActionListener(this);
+		addWindowListener(new WindowAdapter() {
+			@Override
+			public void windowClosing(final WindowEvent event) {
+				_buttonCancel.doClick();
+			}
+		});
 		getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
 				.put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel-config");
 		getRootPane().getActionMap().put("cancel-config", new AbstractAction() {
@@ -237,15 +287,6 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_panelMisc.setLayout(new GridBagLayout());
 		_panelMisc.setBorder(BorderFactory.createTitledBorder("Visualization"));
 
-		gbc.gridx = 0;
-		gbc.gridy = 0;
-		gbc.weightx = 0;
-		_panelMisc.add(_labelLookAndFeel, gbc);
-
-		gbc.gridx = 1;
-		gbc.weightx = 1;
-		_panelMisc.add(_comboLookAndFeel, gbc);
-
 		_panelCheckButtons.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 		_panelCheckButtons.setLayout(new GridLayout(2, 2, 16, 6));
 		_panelCheckButtons.add(_checkTerrainDefaultOn);
@@ -254,10 +295,17 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_panelCheckButtons.add(_checkFullTexturedTerrain);
 
 		gbc.gridx = 0;
-		gbc.gridy = 1;
+		gbc.gridy = 0;
 		gbc.gridwidth = 2;
 		gbc.weightx = 1;
 		_panelMisc.add(_panelCheckButtons, gbc);
+		gbc.gridy = 1;
+		gbc.gridwidth = 1;
+		gbc.weightx = 0;
+		_panelMisc.add(_labelCameraSpeed, gbc);
+		gbc.gridx = 1;
+		gbc.weightx = 1;
+		_panelMisc.add(_spinnerCameraSpeed, gbc);
 
 		_panelEditor.setLayout(new GridBagLayout());
 		_panelEditor.setBorder(BorderFactory.createTitledBorder("Performance"));
@@ -273,6 +321,8 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_panelEditor.add(_labelNeighborTextures, gbc);
 		gbc.gridy = 2;
 		_panelEditor.add(_sliderNeighborTextures, gbc);
+		gbc.gridy = 3;
+		_panelEditor.add(_panelPerformanceReports, gbc);
 
 		_panelGeodata.setLayout(new GridBagLayout());
 
@@ -293,8 +343,21 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_panelGeodata.add(_sliderGridRange, gbc);
 		gbc.gridy = 3;
 		_panelGeodata.add(_buttonChooseColors, gbc);
-
 		gbc.gridy = 4;
+		gbc.gridwidth = 1;
+		gbc.weightx = 0;
+		_panelGeodata.add(_labelSelectionMoveMaxZ, gbc);
+		gbc.gridx = 1;
+		gbc.weightx = 1;
+		_panelGeodata.add(_spinnerSelectionMoveMaxZ, gbc);
+		gbc.gridy = 5;
+		gbc.gridx = 0;
+		_panelGeodata.add(_labelSelectionHeightStep, gbc);
+		gbc.gridx = 1;
+		_panelGeodata.add(_spinnerSelectionHeightStep, gbc);
+
+		gbc.gridx = 0;
+		gbc.gridy = 6;
 		gbc.gridwidth = 1;
 		gbc.weightx = 0;
 		_panelGeodata.add(_labelNSWETexture, gbc);
@@ -303,7 +366,7 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_panelGeodata.add(_comboNSWETexture, gbc);
 
 		gbc.gridx = 0;
-		gbc.gridy = 5;
+		gbc.gridy = 7;
 		gbc.weightx = 0;
 		_panelGeodata.add(_labelGeodataPath, gbc);
 		gbc.gridx = 1;
@@ -388,6 +451,8 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	public final void setVisible(final boolean visible) {
 		if (!isVisible() && visible) {
 			setLocationRelativeTo(super.getOwner());
+			_originalNeighborLimit = Config.MAX_NEIGHBOR_TEXTURES;
+			_updatingControls = true;
 
 			_checkTerrainDefaultOn.setSelected(Config.TERRAIN_DEFAULT_ON);
 			_checkTransparency.setSelected(Config.USE_TRANSPARENCY);
@@ -398,9 +463,11 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 			_checkCircularGeodataGrid.setSelected(Config.CIRCULAR_GEODATA_GRID);
 			_checkFullTexturedTerrain.setSelected(Config.FULL_TEXTURED_TERRAIN);
 			_sliderGridRange.setValue(Config.VIS_GRID_RANGE);
-			_sliderNeighborTextures.setValue(Config.MAX_NEIGHBOR_TEXTURES);
-			_comboLookAndFeel
-					.setSelectedItem(Config.getLookAndFeel(Config.LOOK_AND_FEEL, Config.getActiveLookAndFeel()));
+			_sliderNeighborTextures.setValue(RegionWindowPlan.radiusForNeighborCount(Config.MAX_NEIGHBOR_TEXTURES));
+			_spinnerSelectionMoveMaxZ.setValue(Config.SELECTION_MOVE_MAX_Z);
+			_spinnerSelectionHeightStep.setValue(Config.SELECTION_HEIGHT_STEP);
+			_spinnerCameraSpeed.setValue(Config.CAMERA_SPEED_PERCENT);
+			_updatingControls = false;
 			_comboCellRenderer.setSelectedItem(Config.CELL_RENDERER);
 			_sliderDLLoDRange.setValue(Config.DLLoD_RANGE);
 			_fieldGeodataPath.setText(Config.PATH_TO_GEO_FILES);
@@ -427,6 +494,7 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	@Override
 	public final void mouseReleased(final MouseEvent e) {
 		if (e.getSource() == _fieldGeodataPath) {
+			ThemeManager.refreshDetached(_fileChooser);
 			if (_fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
 				final File file = _fileChooser.getSelectedFile();
 				if (file != null && DIR_FILTER.accept(file)) {
@@ -453,8 +521,24 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	public final void actionPerformed(final ActionEvent e) {
 		if (e.getSource() == this._buttonChooseColors) {
 			_dialogColor.setVisible(true);
+		} else if (e.getSource() == _buttonResetPerformanceMetrics) {
+			GLDisplay.getInstance().getPerformanceMetricsCollector().reset();
+			JOptionPane.showMessageDialog(this, "Performance metrics were reset.", "Performance report",
+					JOptionPane.INFORMATION_MESSAGE);
+		} else if (e.getSource() == _buttonSavePerformanceReport) {
+			Config.MAX_NEIGHBOR_TEXTURES = selectedNeighborCount();
+			final Path report = GLDisplay.getInstance().exportDatedPerformanceReport();
+			if (report != null)
+				JOptionPane.showMessageDialog(this, "Report saved to:\n" + report.toAbsolutePath(),
+						"Performance report", JOptionPane.INFORMATION_MESSAGE);
+			else
+				JOptionPane.showMessageDialog(this, "The performance report could not be saved.",
+						"Performance report", JOptionPane.ERROR_MESSAGE);
 		} else if (e.getSource() == _buttonOk) {
 			final boolean fullMapChanged = Config.FULL_MAP != _checkFullMap.isSelected();
+			final boolean auxiliaryTerrainsChanged =
+					Config.AUXILIARY_TERRAINS != _checkAuxiliaryTerrains.isSelected();
+			final boolean neighborCountChanged = _originalNeighborLimit != selectedNeighborCount();
 			Config.TERRAIN_DEFAULT_ON = _checkTerrainDefaultOn.isSelected();
 			Config.USE_TRANSPARENCY = _checkTransparency.isSelected();
 			Config.DRAW_OUTLINE = _checkDrawOutline.isSelected();
@@ -464,19 +548,31 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 			Config.CIRCULAR_GEODATA_GRID = _checkCircularGeodataGrid.isSelected();
 			Config.FULL_TEXTURED_TERRAIN = _checkFullTexturedTerrain.isSelected();
 			Config.VIS_GRID_RANGE = _sliderGridRange.getValue();
-			Config.MAX_NEIGHBOR_TEXTURES = _sliderNeighborTextures.getValue();
-			Config.LOOK_AND_FEEL = ((LookAndFeelInfo) _comboLookAndFeel.getSelectedItem()).getClassName();
+			Config.MAX_NEIGHBOR_TEXTURES = selectedNeighborCount();
+			Config.SELECTION_MOVE_MAX_Z = Config
+					.normalizeSelectionMoveMaxZ((Integer) _spinnerSelectionMoveMaxZ.getValue());
+			Config.SELECTION_HEIGHT_STEP = (Integer) _spinnerSelectionHeightStep.getValue();
+			Config.CAMERA_SPEED_PERCENT = Config
+					.normalizeCameraSpeed((Integer) _spinnerCameraSpeed.getValue());
 			Config.CELL_RENDERER = VBOGLSLRenderer.NAME;
 			Config.DLLoD_RANGE = _sliderDLLoDRange.getValue();
 			Config.NSWE_TEXTURE_ID = (Integer) _comboNSWETexture.getSelectedItem();
 			FrameMain.getInstance().onNsweTexIdUpdated();
-			if (fullMapChanged)
-				FrameMain.getInstance().onFullMapModeChanged();
+			if (fullMapChanged || auxiliaryTerrainsChanged || neighborCountChanged)
+				FrameMain.getInstance().onRegionStreamingModeChanged();
 
 			Config.save();
 			setVisible(false);
 		} else if (e.getSource() == _buttonCancel) {
+			final boolean neighborCountChanged = Config.MAX_NEIGHBOR_TEXTURES != _originalNeighborLimit;
+			Config.MAX_NEIGHBOR_TEXTURES = _originalNeighborLimit;
+			if (neighborCountChanged)
+				FrameMain.getInstance().onRegionStreamingModeChanged();
 			setVisible(false);
 		}
+	}
+
+	private int selectedNeighborCount() {
+		return RegionWindowPlan.NEIGHBOR_OPTIONS[_sliderNeighborTextures.getValue()];
 	}
 }

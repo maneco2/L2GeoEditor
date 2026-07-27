@@ -38,12 +38,18 @@ import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 
 import javax.swing.JDialog;
+import javax.swing.AbstractAction;
+import javax.swing.BorderFactory;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
 
 /**
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 @SuppressWarnings("serial")
 public final class DialogRemoveLayers extends JDialog implements ActionListener, ItemListener {
@@ -98,11 +104,18 @@ public final class DialogRemoveLayers extends JDialog implements ActionListener,
 		gbc.insets = new Insets(2, 2, 2, 2);
 		gbc.fill = GridBagConstraints.BOTH;
 
-		_panelButtons.setLayout(new GridLayout(1, 2));
+		_panelButtons.setLayout(new GridLayout(1, 2, 8, 0));
 		_panelButtons.add(_buttonOk);
 		_panelButtons.add(_buttonCancel);
 
 		setLayout(new GridBagLayout());
+		((JComponent) getContentPane()).setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+		getRootPane().registerKeyboardAction(new AbstractAction() {
+			@Override
+			public void actionPerformed(final ActionEvent event) {
+				setVisible(false);
+			}
+		}, KeyStroke.getKeyStroke("ESCAPE"), JComponent.WHEN_IN_FOCUSED_WINDOW);
 
 		gbc.gridx = 0;
 		gbc.gridy = 0;
@@ -273,6 +286,7 @@ public final class DialogRemoveLayers extends JDialog implements ActionListener,
 	@Override
 	public final void setVisible(final boolean visible) {
 		if (!isVisible() && visible) {
+			ThemeManager.refreshDetached(this);
 			setLocationRelativeTo(getOwner());
 			_comboRemoveMode.setSelectedItem(REMOVE_MODE_SELECTED);
 			_checkRemoveRemoveFromFullBlock.setSelected(false);

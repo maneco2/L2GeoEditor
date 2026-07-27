@@ -35,6 +35,8 @@ import java.util.Arrays;
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public final class GeoBlockMultiLayer extends GeoBlock {
 	public static final GeoBlockMultiLayer convertFrom(final GeoBlock block) {
@@ -285,8 +287,10 @@ public final class GeoBlockMultiLayer extends GeoBlock {
 		final GeoCell[] layers = _cells3D[cellX][cellY];
 		_cells3D[cellX][cellY] = Util.arrayAdd(layers, cell);
 		_cells = Util.arrayAdd(_cells, cell);
-		Util.quickSort(layers, HEIGHT_COMPARATOR);
+		Util.quickSort(_cells3D[cellX][cellY], HEIGHT_COMPARATOR);
 		updateMinMaxHeight(cell.getHeight(), Short.MIN_VALUE);
+		if (getRegion() != null)
+			getRegion().markModified();
 		return cell;
 	}
 
@@ -312,6 +316,8 @@ public final class GeoBlockMultiLayer extends GeoBlock {
 			removed++;
 		}
 		calcMaxMinHeight();
+		if (removed > 0 && getRegion() != null)
+			getRegion().markModified();
 		GLDisplay.getInstance().getRenderSelector().forceUpdateFrustum();
 		return removed;
 	}
@@ -372,15 +378,9 @@ public final class GeoBlockMultiLayer extends GeoBlock {
 		_cells = null;
 
 		GeoCell[][] cells2D;
-		GeoCell[] cells1D;
-		for (int i = _cells3D.length, j, k; i-- > 0;) {
+		for (int i = _cells3D.length, j; i-- > 0;) {
 			cells2D = _cells3D[i];
 			for (j = cells2D.length; j-- > 0;) {
-				cells1D = cells2D[j];
-				for (k = cells1D.length; k-- > 0;) {
-					cells1D[k].unload();
-					cells1D[k] = null;
-				}
 				cells2D[j] = null;
 			}
 			_cells3D[i] = null;

@@ -23,17 +23,29 @@ import com.swing.defaults.DefaultButton;
 
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Component;
+import java.awt.Font;
+import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 import javax.swing.BorderFactory;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JMenuItem;
+import javax.swing.JMenu;
+import javax.swing.JLabel;
+import javax.swing.JPopupMenu;
+import javax.swing.BorderFactory;
+import javax.swing.JPanel;
+import javax.swing.UIManager;
 
 /**
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.3
  */
 @SuppressWarnings("serial")
 public final class PanelBlockConvert extends JPanel implements ActionListener {
@@ -126,6 +138,54 @@ public final class PanelBlockConvert extends JPanel implements ActionListener {
 		} else {
 			setFieldsEnabled(true);
 		}
+	}
+
+	public final void showContextMenu(final Component invoker, final int x, final int y,
+			final PanelLayers panelLayers) {
+		setFieldsEnabled(GeoBlockSelector.getInstance().hasSelected());
+		final JPopupMenu menu = new JPopupMenu();
+		final JPanel header = new JPanel(new GridLayout(2, 1, 0, 2));
+		header.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 32));
+		final JLabel title = new JLabel(
+				"Selected blocks (" + GeoBlockSelector.getInstance().getSelectedBlockCount() + ")");
+		title.setFont(title.getFont().deriveFont(Font.BOLD));
+		header.add(title);
+		final JLabel hint = new JLabel("Alt + 1");
+		hint.setFont(hint.getFont().deriveFont(10f));
+		header.add(hint);
+		menu.add(header);
+		menu.addSeparator();
+
+		final JMenu convert = new JMenu("Convert block type");
+		convert.add(createMenuItem("Flat", _buttonConvertFlat));
+		convert.add(createMenuItem("Complex", _buttonConvertComplex));
+		convert.add(createMenuItem("MultiLayer", _buttonConvertMultiLayer));
+		convert.setEnabled(_buttonConvertFlat.isEnabled() || _buttonConvertComplex.isEnabled()
+				|| _buttonConvertMultiLayer.isEnabled());
+		menu.add(convert);
+
+		final JMenuItem addLayer = new JMenuItem("Add Layer...");
+		addLayer.setEnabled(panelLayers.isLayerEditingEnabled());
+		addLayer.addActionListener(event -> panelLayers.openAddLayerDialog());
+		menu.add(addLayer);
+
+		final JMenuItem removeLayer = new JMenuItem("Remove Layer...");
+		removeLayer.setEnabled(panelLayers.isLayerEditingEnabled());
+		removeLayer.addActionListener(event -> panelLayers.openRemoveLayerDialog());
+		menu.add(removeLayer);
+
+		menu.addSeparator();
+		menu.add(createMenuItem("Restore from base", _buttonRestoreBlock));
+		ThemeManager.preparePopupMenu(menu);
+		hint.setForeground(UIManager.getColor("Label.disabledForeground"));
+		menu.show(invoker, x, y);
+	}
+
+	private static JMenuItem createMenuItem(final String text, final DefaultButton actionButton) {
+		final JMenuItem item = new JMenuItem(text);
+		item.setEnabled(actionButton.isEnabled());
+		item.addActionListener(event -> actionButton.doClick());
+		return item;
 	}
 
 	/**

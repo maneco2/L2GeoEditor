@@ -14,30 +14,42 @@
  */
 package com.swing.defaults;
 
+import com.swing.ThemeManager;
+
 import javax.swing.Icon;
 import javax.swing.JButton;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 @SuppressWarnings("serial")
 public class DefaultButton extends JButton {
 	public DefaultButton() {
-
+		initialize();
 	}
 
 	public DefaultButton(final String text) {
 		super(text);
+		initialize();
 	}
 
 	public DefaultButton(final Icon icon) {
 		super(icon);
+		initialize();
 	}
 
 	public DefaultButton(final String text, final Icon icon) {
 		super(text, icon);
+		initialize();
+	}
+
+	private void initialize() {
+		setRolloverEnabled(true);
+		getModel().addChangeListener(event -> ThemeManager.refreshButtonState(this));
 	}
 
 	@Override

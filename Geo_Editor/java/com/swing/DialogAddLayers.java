@@ -36,7 +36,12 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 import javax.swing.JDialog;
+import javax.swing.AbstractAction;
+import javax.swing.BorderFactory;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
+import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
@@ -44,6 +49,8 @@ import javax.swing.event.DocumentListener;
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 @SuppressWarnings("serial")
 public final class DialogAddLayers extends JDialog implements ActionListener, DocumentListener {
@@ -90,11 +97,18 @@ public final class DialogAddLayers extends JDialog implements ActionListener, Do
 		_panelChecks.add(_checkAutoSelectAdded);
 		_panelChecks.add(_checkAutoSelectAppend);
 
-		_panelButtons.setLayout(new GridLayout(1, 2));
+		_panelButtons.setLayout(new GridLayout(1, 2, 8, 0));
 		_panelButtons.add(_buttonOk);
 		_panelButtons.add(_buttonCancel);
 
 		setLayout(new GridBagLayout());
+		((JComponent) getContentPane()).setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+		getRootPane().registerKeyboardAction(new AbstractAction() {
+			@Override
+			public void actionPerformed(final ActionEvent event) {
+				setVisible(false);
+			}
+		}, KeyStroke.getKeyStroke("ESCAPE"), JComponent.WHEN_IN_FOCUSED_WINDOW);
 
 		gbc.gridx = 0;
 		gbc.gridy = 0;
@@ -142,8 +156,10 @@ public final class DialogAddLayers extends JDialog implements ActionListener, Do
 
 	@Override
 	public final void setVisible(final boolean visible) {
-		if (!isVisible() && visible)
+		if (!isVisible() && visible) {
+			ThemeManager.refreshDetached(this);
 			setLocationRelativeTo(getOwner());
+		}
 
 		super.setVisible(visible);
 		if (!visible)
@@ -255,7 +271,7 @@ public final class DialogAddLayers extends JDialog implements ActionListener, Do
 		}
 
 		_buttonOk.setEnabled(true);
-		_fieldHeight.setForeground(Color.BLACK);
+			_fieldHeight.setForeground(UIManager.getColor("TextField.foreground"));
 		_fieldHeight.setToolTipText(null);
 	}
 

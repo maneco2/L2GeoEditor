@@ -15,7 +15,8 @@
 package com.jogl;
 
 import com.Config;
-import com.Config;
+import com.geo.GeoBlockSelector;
+import com.swing.FrameMain;
 import com.util.FastArrayList;
 
 import java.awt.AWTException;
@@ -37,10 +38,22 @@ import javax.media.opengl.awt.GLCanvas;
 
 /**
  * L2J project source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+	 * @version 1.4
  */
 public final class AWTInput implements MouseListener, MouseMotionListener, MouseWheelListener, KeyListener {
+	public static boolean shouldOpenBlockContextMenu(final int keyCode, final boolean altDown,
+			final boolean hasSelection) {
+		return shouldOpenBlockContextMenu(keyCode, altDown ? KeyEvent.ALT_DOWN_MASK : 0, hasSelection);
+	}
+
+	public static boolean shouldOpenBlockContextMenu(final int keyCode, final int modifiers,
+			final boolean hasSelection) {
+		return InputBindings.matches(InputBindings.Action.OPEN_BLOCK_ACTIONS, keyCode, modifiers) && hasSelection;
+	}
+
 	private boolean _miniMapResize;
 	private int _miniMapLastX;
 	private int _miniMapLastY;
@@ -181,7 +194,7 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 			}
 		}
 
-		final double move = tpf * (_keySpace ? 0.1f : 0.02f);
+		final double move = calculateMoveDistance(tpf, _keySpace, Config.CAMERA_SPEED_PERCENT);
 		if (_keyW && !_keyS)
 			camera.moveForeward(-move);
 
@@ -238,6 +251,10 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 			return;
 		}
 		updateMouseButton(e, false);
+	}
+
+	public static double calculateMoveDistance(final double tpf, final boolean fast, final int speedPercent) {
+		return tpf * (fast ? 0.1d : 0.02d) * Config.normalizeCameraSpeed(speedPercent) / 100d;
 	}
 
 	private boolean beginMiniMapResize(final MouseEvent e) {
@@ -344,7 +361,39 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	 */
 	@Override
 	public final void keyPressed(final KeyEvent keyevent) {
-		updateKey(keyevent.getKeyCode(), true);
+		final boolean hasSelection = GeoBlockSelector.getInstance() != null
+				&& GeoBlockSelector.getInstance().hasSelected();
+		if (shouldOpenBlockContextMenu(keyevent.getKeyCode(), keyevent.getModifiersEx(), hasSelection)) {
+			FrameMain.getInstance().showBlockContextMenu(GLDisplay.getInstance().getCanvas(), _mouseX, _mouseY);
+			return;
+		}
+		if (hasSelection && moveSingleSelection(keyevent.getKeyCode(), keyevent.getModifiersEx()))
+			return;
+		if (hasSelection && adjustSelectedHeight(keyevent.getKeyCode(), keyevent.getModifiersEx()))
+			return;
+		updateKey(keyevent, true);
+	}
+
+	private static boolean moveSingleSelection(final int keyCode, final int modifiers) {
+		final GeoBlockSelector selector = GeoBlockSelector.getInstance();
+		if (InputBindings.matches(InputBindings.Action.SELECT_NORTH, keyCode, modifiers))
+			return selector.moveSingleSelection(0, -1);
+		if (InputBindings.matches(InputBindings.Action.SELECT_SOUTH, keyCode, modifiers))
+			return selector.moveSingleSelection(0, 1);
+		if (InputBindings.matches(InputBindings.Action.SELECT_WEST, keyCode, modifiers))
+			return selector.moveSingleSelection(-1, 0);
+		if (InputBindings.matches(InputBindings.Action.SELECT_EAST, keyCode, modifiers))
+			return selector.moveSingleSelection(1, 0);
+		return false;
+	}
+
+	private static boolean adjustSelectedHeight(final int keyCode, final int modifiers) {
+		final GeoBlockSelector selector = GeoBlockSelector.getInstance();
+		if (InputBindings.matches(InputBindings.Action.RAISE_SELECTED_HEIGHT, keyCode, modifiers))
+			return selector.adjustSelectedHeight(1);
+		if (InputBindings.matches(InputBindings.Action.LOWER_SELECTED_HEIGHT, keyCode, modifiers))
+			return selector.adjustSelectedHeight(-1);
+		return false;
 	}
 
 	/**
@@ -352,62 +401,42 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	 */
 	@Override
 	public final void keyReleased(final KeyEvent keyevent) {
-		updateKey(keyevent.getKeyCode(), false);
+		updateKey(keyevent, false);
 	}
 
-	private final void updateKey(final int key, final boolean state) {
-		switch (key) {
-		case KeyEvent.VK_W:
+	private final void updateKey(final KeyEvent event, final boolean state) {
+		final int key = event.getKeyCode();
+		final int modifiers = event.getModifiersEx();
+		if (InputBindings.matches(InputBindings.Action.MOVE_FORWARD, key, modifiers)) {
 			_keyW = state;
-			break;
-
-		case KeyEvent.VK_A:
+		} else if (InputBindings.matches(InputBindings.Action.MOVE_LEFT, key, modifiers)) {
 			_keyA = state;
-			break;
-
-		case KeyEvent.VK_S:
+		} else if (InputBindings.matches(InputBindings.Action.MOVE_BACKWARD, key, modifiers)) {
 			_keyS = state;
-			break;
-
-		case KeyEvent.VK_D:
+		} else if (InputBindings.matches(InputBindings.Action.MOVE_RIGHT, key, modifiers)) {
 			_keyD = state;
-			break;
-
-		case KeyEvent.VK_Q:
+		} else if (InputBindings.matches(InputBindings.Action.MOVE_UP, key, modifiers)) {
 			_keyQ = state;
-			break;
-
-		case KeyEvent.VK_E:
+		} else if (InputBindings.matches(InputBindings.Action.MOVE_DOWN, key, modifiers)) {
 			_keyE = state;
-			break;
-
-		case KeyEvent.VK_R:
+		} else if (InputBindings.matches(InputBindings.Action.TOGGLE_TERRAIN_WIREFRAME, key, modifiers)) {
 			_keyR = state;
 			if (state)
 				_keyRToggle = !_keyRToggle;
-			break;
-
-		case KeyEvent.VK_T:
+		} else if (InputBindings.matches(InputBindings.Action.TOGGLE_TEXTURED_TERRAIN, key, modifiers)) {
 			_keyT = state;
 			if (state)
 				Config.TERRAIN_DEFAULT_ON = !Config.TERRAIN_DEFAULT_ON;
-			break;
-
-		case KeyEvent.VK_G:
+		} else if (InputBindings.matches(InputBindings.Action.TOGGLE_GEODATA_GRID, key, modifiers)) {
 			_keyG = state;
 			if (state)
 				_keyGToggle = !_keyGToggle;
-			break;
-
-		case KeyEvent.VK_F:
+		} else if (InputBindings.matches(InputBindings.Action.FREEZE_GEODATA_GRID, key, modifiers)) {
 			_keyF = state;
 			if (state)
 				_keyFToggle = !_keyFToggle;
-			break;
-
-		case KeyEvent.VK_SPACE:
+		} else if (InputBindings.matches(InputBindings.Action.MOVE_FASTER, key, modifiers)) {
 			_keySpace = state;
-			break;
 		}
 	}
 

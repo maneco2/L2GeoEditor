@@ -41,8 +41,10 @@ import com.jogamp.opengl.util.texture.awt.AWTTextureIO;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public final class GLTerrain {
 	private static volatile int TEXTURE_PROGRESS;
@@ -98,13 +100,21 @@ public final class GLTerrain {
 
 	private boolean _needUpdateTexture;
 	private boolean _needUpdateVBO;
+	private long _lastVboPreparationMicros;
+	private long _lastVboUploadMicros;
 
 	private boolean _wireframe;
 	private boolean _enabled;
 	private boolean _streamingPreview;
 	private int _textureMaxSize;
+	private final TerrainDetailLevel _detailLevel;
 
 	public GLTerrain() {
+		this(TerrainDetailLevel.LOW);
+	}
+
+	public GLTerrain(final TerrainDetailLevel detailLevel) {
+		_detailLevel = detailLevel == null ? TerrainDetailLevel.LOW : detailLevel;
 		_vboIndex = -1;
 		_vboVertex = -1;
 		_vboTexture = -1;
@@ -132,6 +142,16 @@ public final class GLTerrain {
 
 	public final void setWireframe(final boolean wireframe) {
 		_wireframe = wireframe;
+	}
+
+	public record VboUpdateSample(long preparationMicros, long uploadMicros) { }
+
+	/** Returns and clears the latest terrain VBO preparation and GPU upload durations. */
+	public final VboUpdateSample consumeLastVboUpdate() {
+		final VboUpdateSample sample = new VboUpdateSample(_lastVboPreparationMicros, _lastVboUploadMicros);
+		_lastVboPreparationMicros = 0L;
+		_lastVboUploadMicros = 0L;
+		return sample;
 	}
 
 	/** Renders a lightweight geodata-style mesh without loading raster textures. */
@@ -219,7 +239,7 @@ public final class GLTerrain {
 		_vboVertex = temp[1];
 		_vboTexture = temp[2];
 
-		_builder = TerrainDetailLevel.LOW.newBuilder();
+		_builder = _detailLevel.newBuilder();
 		_builder.init(gl, _vboIndex, _vboTexture);
 	}
 
@@ -275,6 +295,8 @@ public final class GLTerrain {
 		if (_needUpdateVBO) {
 			_needUpdateVBO = false;
 			_builder.update(gl, _vboVertex, _region.getGeoBlocks(), false);
+			_lastVboPreparationMicros = _builder.getLastPreparationMicros();
+			_lastVboUploadMicros = _builder.getLastUploadMicros();
 		}
 
 		if (!_streamingPreview && !_textureReady)
@@ -385,6 +407,8 @@ public final class GLTerrain {
 		private ShortBuffer _vertexBuffer;
 		private boolean _initialized;
 		private int _indexBufferLen;
+		private long _lastPreparationMicros;
+		private long _lastUploadMicros;
 
 		public TerrainBuilder(final TerrainDetailLevel detailLevel) {
 			_detailLevel = detailLevel;
@@ -396,6 +420,14 @@ public final class GLTerrain {
 
 		public final int getIndexBufferLen() {
 			return _indexBufferLen;
+		}
+
+		public final long getLastPreparationMicros() {
+			return _lastPreparationMicros;
+		}
+
+		public final long getLastUploadMicros() {
+			return _lastUploadMicros;
 		}
 
 		public final void init(final GL2 gl, final int vboIndex, final int vboTexture) {
@@ -448,16 +480,20 @@ public final class GLTerrain {
 		}
 
 		public final void update(final GL2 gl, final int vboVertex, final GeoBlock[][] blocks, final boolean flipped) {
+			final long preparationStart = System.nanoTime();
 			_vertexBuffer.clear();
 			updateImpl(_vertexBuffer, blocks, flipped);
 			_vertexBuffer.flip();
+			_lastPreparationMicros = Math.max(1L, (System.nanoTime() - preparationStart) / 1_000L);
 
+			final long uploadStart = System.nanoTime();
 			gl.glBindBuffer(GL2.GL_ARRAY_BUFFER, vboVertex);
 			// call with null buffer first to tell VGA-driver that we give a shit about the
 			// old content
 			gl.glBufferData(GL2.GL_ARRAY_BUFFER, 0, null, GL2.GL_DYNAMIC_DRAW);
 			gl.glBufferData(GL2.GL_ARRAY_BUFFER, _vertexBuffer.remaining() * Buffers.SIZEOF_SHORT, _vertexBuffer,
 					GL2.GL_DYNAMIC_DRAW);
+			_lastUploadMicros = Math.max(1L, (System.nanoTime() - uploadStart) / 1_000L);
 		}
 
 		public abstract void updateImpl(final ShortBuffer vertexBuffer, final GeoBlock[][] blocks,

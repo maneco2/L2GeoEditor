@@ -23,11 +23,8 @@ import com.swing.defaults.DefaultTable;
 import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
 
 import javax.swing.BorderFactory;
 import javax.swing.JPanel;
@@ -35,6 +32,13 @@ import javax.swing.JScrollPane;
 import javax.swing.ListSelectionModel;
 import javax.swing.table.DefaultTableModel;
 
+/**
+ * Displays and edits layers for the current cell selection.
+ *
+ * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
+ */
 @SuppressWarnings("serial")
 public final class PanelLayers extends JPanel implements ActionListener {
 	private final CellLayerTable _tableLayers;
@@ -114,19 +118,33 @@ public final class PanelLayers extends JPanel implements ActionListener {
 		}
 	}
 
+	public final boolean isLayerEditingEnabled() {
+		return _buttonLayerAdd.isEnabled();
+	}
+
+	public final void openAddLayerDialog() {
+		if (isLayerEditingEnabled())
+			_dialogAddLayer.setVisible(true);
+	}
+
+	public final void openRemoveLayerDialog() {
+		if (isLayerEditingEnabled())
+			_dialogRemoveLayer.setVisible(true);
+	}
+
 	/**
 	 * @see java.awt.event.ActionListener#actionPerformed(java.awt.event.ActionEvent)
 	 */
 	@Override
 	public final void actionPerformed(final ActionEvent e) {
 		if (e.getSource() == _buttonLayerAdd) {
-			_dialogAddLayer.setVisible(true);
+			openAddLayerDialog();
 		} else if (e.getSource() == _buttonLayerRemove) {
-			_dialogRemoveLayer.setVisible(true);
+			openRemoveLayerDialog();
 		}
 	}
 
-	private final class CellLayerTable extends DefaultTable implements MouseListener {
+	private final class CellLayerTable extends DefaultTable {
 		public CellLayerTable() {
 			super(new DefaultTableModel() {
 				@Override
@@ -141,7 +159,6 @@ public final class PanelLayers extends JPanel implements ActionListener {
 			setRowSelectionAllowed(true);
 			setColumnMinMaxWidth(0, 40, 40);
 			setColumnMinWidth(1, 50);
-			addMouseListener(this);
 		}
 
 		public final void updateValues(GeoCell[] layers, final GeoCell selected) {
@@ -161,37 +178,6 @@ public final class PanelLayers extends JPanel implements ActionListener {
 
 			if (layers.length > 0 && layer < layers.length)
 				setSelectionInterval(layer);
-		}
-
-		@Override
-		public final void mouseClicked(final MouseEvent e) {
-			final int row = rowAtPoint(new Point(e.getX(), e.getY()));
-			// TODO what is this supposed to be?
-			if (row > -1) {
-
-			} else {
-
-			}
-		}
-
-		@Override
-		public final void mouseEntered(final MouseEvent e) {
-
-		}
-
-		@Override
-		public final void mouseExited(final MouseEvent e) {
-
-		}
-
-		@Override
-		public final void mousePressed(final MouseEvent e) {
-
-		}
-
-		@Override
-		public final void mouseReleased(final MouseEvent e) {
-
 		}
 	}
 }

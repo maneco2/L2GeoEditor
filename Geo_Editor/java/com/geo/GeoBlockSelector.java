@@ -22,8 +22,10 @@ import com.util.FastArrayList;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+	 * @version 1.2
  */
 public final class GeoBlockSelector {
 	private static final void setStateOf(final FastArrayList<GeoCell> cells, final SelectionState state) {
@@ -163,6 +165,7 @@ public final class GeoBlockSelector {
 		}
 
 		if (restoredAny) {
+			region.refreshModifiedState();
 			GLDisplay.getInstance().getTerrain().checkNeedUpdateVBO(true, true);
 			GLDisplay.getInstance().getRenderSelector().forceUpdateGeoBlocks();
 			updateGUI(null);
@@ -171,6 +174,54 @@ public final class GeoBlockSelector {
 
 	public final boolean hasSelected() {
 		return getHead().getNext() != getTail();
+	}
+
+	public final int getSelectedBlockCount() {
+		int count = 0;
+		for (GeoBlockEntry entry = getHead(); (entry = entry.getNext()) != getTail();)
+			count++;
+		return count;
+	}
+
+	/** Moves an exact one-cell selection inside the active region. */
+	public final boolean moveSingleSelection(final int deltaX, final int deltaY) {
+		if (getSelectedBlockCount() != 1)
+			return false;
+		final FastArrayList<GeoCell> selected = getHead().getNext().getValue();
+		if (selected == null || selected.size() != 1)
+			return false;
+
+		final GeoCell current = selected.getUnsafe(0);
+		final GeoRegion region = GeoEngine.getInstance().getActiveRegion();
+		if (region == null)
+			return false;
+		final byte blockType = current.getBlock().getType();
+		final int targetX = SelectionNavigationPolicy.nextCoordinate(current.getGeoX(), deltaX, blockType);
+		final int targetY = SelectionNavigationPolicy.nextCoordinate(current.getGeoY(), deltaY, blockType);
+		final GeoCell target = region.nGetCellChecked(targetX, targetY, current.getHeight());
+		if (target == null || !SelectionNavigationPolicy.isHeightAllowed(current.getHeight(), target.getHeight(),
+				com.Config.SELECTION_MOVE_MAX_Z))
+			return false;
+
+		selectGeoCell(target, false, false);
+		GLDisplay.getInstance().getRenderSelector().forceUpdateGeoBlocks();
+		return true;
+	}
+
+	/** Adjusts every selected layer by one L2J height unit (8 world units). */
+	public final boolean adjustSelectedHeight(final int direction) {
+		if (!hasSelected() || direction == 0)
+			return false;
+		final short delta = (short) (direction > 0 ? com.Config.SELECTION_HEIGHT_STEP
+				: -com.Config.SELECTION_HEIGHT_STEP);
+		for (GeoBlockEntry entry = getHead(), tail = getTail(); (entry = entry.getNext()) != tail;) {
+			final FastArrayList<GeoCell> cells = entry.getValue();
+			for (int i = cells.size(); i-- > 0;)
+				cells.getUnsafe(i).addHeight(delta);
+		}
+		GLDisplay.getInstance().getRenderSelector().forceUpdateFrustum();
+		updateGUI(null);
+		return true;
 	}
 
 	public final boolean isGeoCellSelected(final GeoCell cell) {

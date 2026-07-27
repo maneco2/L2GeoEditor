@@ -23,6 +23,8 @@ import com.swing.FrameMain;
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public final class GeoCellCM extends GeoCell {
 	private byte _cellX;
@@ -82,6 +84,8 @@ public final class GeoCellCM extends GeoCell {
 	public final void addHeight(final short height) {
 		final short oldHeight = getHeight();
 		_heightAndNSWE = GeoEngine.updateHeightOfHeightAndNSWE(_heightAndNSWE, (short) (getHeight() + height));
+		if (getHeight() != oldHeight)
+			markModified();
 		getBlock().updateLayerFor(this);
 		getBlock().updateMinMaxHeight(getHeight(), oldHeight);
 
@@ -127,7 +131,10 @@ public final class GeoCellCM extends GeoCell {
 	@Override
 	public final void setHeightAndNSWE(final short heightAndNSWE) {
 		final short oldHeight = getHeight();
+		final short oldHeightAndNSWE = _heightAndNSWE;
 		_heightAndNSWE = heightAndNSWE;
+		if (_heightAndNSWE != oldHeightAndNSWE)
+			markModified();
 		getBlock().updateLayerFor(this);
 		getBlock().updateMinMaxHeight(getHeight(), oldHeight);
 
@@ -140,7 +147,11 @@ public final class GeoCellCM extends GeoCell {
 	 */
 	@Override
 	public final void setNswe(final short nswe) {
-		_heightAndNSWE = GeoEngine.updateNSWEOfHeightAndNSWE(_heightAndNSWE, nswe);
+		final short updated = GeoEngine.updateNSWEOfHeightAndNSWE(_heightAndNSWE, nswe);
+		if (updated != _heightAndNSWE) {
+			_heightAndNSWE = updated;
+			markModified();
+		}
 
 		if (FrameMain.getInstance().isSelectedGeoCell(this))
 			FrameMain.getInstance().setSelectedGeoCell(this);

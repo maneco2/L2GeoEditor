@@ -25,17 +25,20 @@ import com.util.Util;
 
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 
 import javax.swing.ImageIcon;
+import javax.swing.BorderFactory;
 import javax.swing.JPanel;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
  */
 @SuppressWarnings("serial")
 public final class PanelNswe extends JPanel implements ActionListener {
@@ -51,7 +54,8 @@ public final class PanelNswe extends JPanel implements ActionListener {
 	}
 
 	private final void initLayout() {
-		setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
+		setLayout(new FlowLayout(FlowLayout.CENTER, 2, 3));
+		setBorder(BorderFactory.createEmptyBorder(1, 4, 1, 4));
 		add(_buttonsNswe[GeoEngine.NSWE_NONE]);
 		add(_buttonsNswe[GeoEngine.NORTH]);
 		add(_buttonsNswe[GeoEngine.SOUTH]);
@@ -92,7 +96,7 @@ public final class PanelNswe extends JPanel implements ActionListener {
 			setButtonsEnabled(false);
 		} else {
 			setButtonsEnabled(true);
-			setButtonSelected(_buttonsNswe[cell.getNSWE()]);
+			setButtonSelected(_buttonsNswe[GeoEngine.invertNSWE(cell.getNSWE())]);
 		}
 	}
 
@@ -110,7 +114,7 @@ public final class PanelNswe extends JPanel implements ActionListener {
 		for (GeoBlockEntry entry = selector.getHead(), tail = selector.getTail(); (entry = entry.getNext()) != tail;) {
 			cells = entry.getValue();
 			for (i = cells.size(); i-- > 0;) {
-				cells.getUnsafe(i).setNswe(nsweButton.getNswe());
+				cells.getUnsafe(i).setNswe(GeoEngine.invertNSWE(nsweButton.getNswe()));
 			}
 		}
 
@@ -122,18 +126,38 @@ public final class PanelNswe extends JPanel implements ActionListener {
 
 		public NsweButton(final int nswe) {
 			_nswe = (short) nswe;
+			setToolTipText("Block directions: " + GeoEngine.nameOfNSWE(nswe));
+			setFocusPainted(false);
+			setMargin(new Insets(2, 2, 2, 2));
 
-			final BufferedImage img = Util.loadImage("./data/icon/nswe-" + nswe + ".png");
+			final BufferedImage img = updateThemeIcon();
 			if (img != null) {
-				setIcon(new ImageIcon(img));
-				final int width = img.getWidth() + 15;
-				final int height = img.getHeight() + 15;
+				final int width = img.getWidth() + 12;
+				final int height = img.getHeight() + 12;
 				setPreferredSize(new Dimension(width, height));
 				setMaximumSize(new Dimension(width, height));
 				setMinimumSize(new Dimension(width, height));
 			} else {
 				setText(GeoEngine.nameOfNSWE(nswe));
 			}
+		}
+
+		@Override
+		public void updateUI() {
+			super.updateUI();
+			updateThemeIcon();
+		}
+
+		private BufferedImage updateThemeIcon() {
+			final BufferedImage source = Util.loadImage("./data/icon/nswe-" + _nswe + ".png");
+			if (source == null)
+				return null;
+			final ImageIcon imageIcon = new ImageIcon(source);
+			setIcon(imageIcon);
+			// Nimbus darkens generated disabled icons too aggressively. Keeping the
+			// themed glyph preserves direction readability before a cell is selected.
+			setDisabledIcon(imageIcon);
+			return source;
 		}
 
 		public final short getNswe() {

@@ -23,6 +23,8 @@ import com.swing.FrameMain;
  * L2J source.
  * 
  * @author Forsaiken aka Patrick
+ * @author Maneco2
+ * @version 1.1
  */
 public final class GeoCellFlat extends GeoCell {
 	private short _height;
@@ -74,6 +76,8 @@ public final class GeoCellFlat extends GeoCell {
 	public final void addHeight(final short height) {
 		final short oldHeight = getHeight();
 		_height = GeoEngine.getGeoHeightOfHeight((short) (_height + height));
+		if (_height != oldHeight)
+			markModified();
 		getBlock().updateMinMaxHeight(_height, oldHeight);
 
 		if (FrameMain.getInstance().isSelectedGeoCell(this))
@@ -119,6 +123,8 @@ public final class GeoCellFlat extends GeoCell {
 	public final void setHeightAndNSWE(final short heightAndNSWE) {
 		final short oldHeight = getHeight();
 		_height = GeoEngine.getHeight(heightAndNSWE);
+		if (_height != oldHeight)
+			markModified();
 		getBlock().updateMinMaxHeight(_height, oldHeight);
 
 		if (FrameMain.getInstance().isSelectedGeoCell(this))

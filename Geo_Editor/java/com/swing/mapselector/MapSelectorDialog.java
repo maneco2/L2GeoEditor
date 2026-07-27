@@ -20,6 +20,7 @@ import java.awt.Frame;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -32,12 +33,16 @@ import javax.swing.SwingConstants;
 import javax.swing.KeyStroke;
 import javax.swing.WindowConstants;
 import javax.swing.JTextField;
-import javax.swing.BorderFactory;
 import com.Config;
 import com.geo.GeoEngine;
 import com.util.Util;
 
-/** New map selector entry point. The legacy JumpTo dialog is not used here. */
+/**
+ * New map selector entry point. The legacy JumpTo dialog is not used here.
+ *
+ * @author Maneco2
+ * @version 1.1
+ */
 @SuppressWarnings("serial")
 public final class MapSelectorDialog extends JDialog {
     @FunctionalInterface public interface RegionOpenListener { void open(int regionX, int regionY, int geoX, int geoY); }
@@ -53,6 +58,7 @@ public final class MapSelectorDialog extends JDialog {
     private boolean updatingFields;
     private int selectedGeoX = -1, selectedGeoY = -1;
     private final JButton openButton = new JButton("Open Region");
+    private final JLabel availabilityLabel = new JLabel(" ");
     private final RegionOpenListener listener;
     private RegionMapPanel regionView;
 
@@ -72,6 +78,7 @@ public final class MapSelectorDialog extends JDialog {
         final JButton cancelButton = new JButton("Cancel");
         cancelButton.addActionListener((event) -> setVisible(false));
         final JPanel buttons = new JPanel();
+        buttons.add(availabilityLabel);
         buttons.add(openButton); buttons.add(cancelButton);
         worldMap.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
         cards.add(worldMap, "world");
@@ -122,6 +129,8 @@ public final class MapSelectorDialog extends JDialog {
         worldYField.setText(String.valueOf(GeoEngine.getWorldY(centerGeoY)));
         updatingFields = false;
         final String name = (regionX + 10) + "_" + (regionY + 10);
+        final File geodataFile = new File(Config.PATH_TO_GEO_FILES, name + ".l2j");
+        final boolean available = geodataFile.isFile();
         final java.awt.image.BufferedImage region = Util.loadImage("./data/textures/region/" + name + ".jpg");
         final String status = region == null ? "Region image not found" : "Region image loaded";
         final String info = "Region: " + name + "   Geo: " + centerGeoX + ", " + centerGeoY + "   " + status;
@@ -136,7 +145,9 @@ public final class MapSelectorDialog extends JDialog {
         // One click on the world grid selects the region and its center. Enter
         // or Open Region can therefore be used without a second click inside
         // the preview image.
-        openButton.setEnabled(true);
+        openButton.setEnabled(available);
+        openButton.setToolTipText(available ? "Open region " + name : "Missing geodata: " + geodataFile.getPath());
+        availabilityLabel.setText(available ? " " : "Geodata file not available");
     }
 
     /** Opens the selector at the region and block currently used by the editor. */
@@ -155,7 +166,6 @@ public final class MapSelectorDialog extends JDialog {
         worldXField.setText(String.valueOf(GeoEngine.getWorldX(selectedGeoX)));
         worldYField.setText(String.valueOf(GeoEngine.getWorldY(selectedGeoY)));
         updatingFields = false;
-        openButton.setEnabled(true);
         setVisible(true);
     }
 
@@ -171,7 +181,7 @@ public final class MapSelectorDialog extends JDialog {
     private void updateGeoSelection(final int regionX, final int regionY, final int cellX, final int cellY) {
         final int geoX = com.geo.GeoEngine.getGeoXY(regionX, cellX);
         final int geoY = com.geo.GeoEngine.getGeoXY(regionY, cellY);
-        selectedGeoX = geoX; selectedGeoY = geoY; openButton.setEnabled(true);
+        selectedGeoX = geoX; selectedGeoY = geoY;
         geoXField.setText(String.valueOf(geoX)); geoYField.setText(String.valueOf(geoY));
         worldXField.setText(String.valueOf(com.geo.GeoEngine.getWorldX(geoX)));
         worldYField.setText(String.valueOf(com.geo.GeoEngine.getWorldY(geoY)));

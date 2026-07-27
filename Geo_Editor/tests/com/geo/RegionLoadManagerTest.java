@@ -16,6 +16,7 @@ package com.geo;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.TimeUnit;
 
 public final class RegionLoadManagerTest {
@@ -23,6 +24,12 @@ public final class RegionLoadManagerTest {
 		try (RegionLoadManager manager = new RegionLoadManager()) {
 			check(RegionLoadManager.getNeighborLoadBatchSize() > 0, "stream batch size");
 			check(RegionLoadManager.getNeighborBatchPauseMillis() >= 0, "stream batch pause");
+			check(RegionLoadManager.loadPauseMillisFor(8) == 8, "small window throttle");
+			check(RegionLoadManager.loadPauseMillisFor(48) == 16, "medium window throttle");
+			check(RegionLoadManager.loadPauseMillisFor(80) == 30, "large window throttle");
+			check(RegionLoadManager.loadBatchSizeFor(80) == 1, "large windows must yield after every region");
+			check(RegionLoadManager.batchPauseMillisFor(80) == 0, "large window must not stack two pauses");
+			check(RegionLoadManager.batchPauseMillisFor(24) > 0, "small batches retain cooperative pause");
 			manager.selectCenter(12, 12);
 			manager.mark(new RegionLoadManager.RegionKey(12, 12), RegionLoadManager.State.LOADED);
 			check(manager.snapshot().size() == 9, "expected 3x3 window");
@@ -65,6 +72,22 @@ public final class RegionLoadManagerTest {
 			check(manager.snapshot().size() == 1, "single-region mode retained neighbors");
 			check(manager.snapshot().get(new RegionLoadManager.RegionKey(20, 21)) == RegionLoadManager.State.LOADED,
 					"single-region center not loaded");
+		}
+		try (RegionLoadManager manager = new RegionLoadManager()) {
+			manager.selectCenter(19, 13, 2);
+			check(manager.snapshot().size() == 25, "expected 5x5 window");
+			check(manager.radius() == 2, "window radius");
+			final AtomicReference<RegionLoadManager.Progress> progress = new AtomicReference<>();
+			manager.setProgressListener(progress::set);
+			manager.checkNeighborsAsync(key -> false).get(2L, TimeUnit.SECONDS);
+			check(progress.get() != null && progress.get().completed() == 24 && progress.get().total() == 24,
+					"missing regions must complete progress");
+			manager.selectCenter(21, 13, 2);
+			check(manager.center().equals(new RegionLoadManager.RegionKey(21, 13)), "new anchored center");
+			check(!manager.snapshot().containsKey(new RegionLoadManager.RegionKey(17, 11)),
+					"complete reset retained previous edge");
+			check(manager.snapshot().containsKey(new RegionLoadManager.RegionKey(23, 15)),
+					"complete reset omitted new edge");
 		}
 		try (RegionLoadManager manager = new RegionLoadManager()) {
 			manager.selectCenter(30, 30);

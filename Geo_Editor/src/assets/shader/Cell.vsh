@@ -8,9 +8,8 @@
 #define MAYBE_MAKE_DARKER_FACTOR 0.85
 
 uniform vec4 cell_colors[13];
-uniform int block_data[64];
+uniform ivec2 block_data[64];
 uniform int cell_mask[64];
-uniform int cell_positions[64];
 uniform int cell_data;
 uniform vec2 block_position;
 uniform int block_type;
@@ -33,7 +32,7 @@ void main(void)
 			gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 			return;
 		}
-		int data = block_data[index];
+		int data = block_data[index].x;
 		int nswe = data >> 4 & 15;
 		height = (data >> 4 & -16) >> 1;
 		color = data & 15;
@@ -69,7 +68,7 @@ void main(void)
 		
 		if (block_type == BLOCK_TYPE_MULTI_LAYER)
 		{
-			int position = cell_positions[index];
+			int position = block_data[index].y;
 			pos.x -= float(x);
 			pos.z -= float(y);
 			pos.x = pos.x + block_position.x + float(position & 65535);

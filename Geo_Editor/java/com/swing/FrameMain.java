@@ -15,20 +15,26 @@
 package com.swing;
 
 import com.Config;
+import com.exceptions.GeoFileNotFoundException;
 import com.geo.GeoCell;
 import com.geo.GeoEngine;
 import com.geo.GeoRegion;
 import com.geo.RegionLoadManager;
+import com.geo.RegionStreamingPolicy;
+import com.geo.RegionWindowPlan;
 import com.jogl.GLDisplay;
 import com.jogl.GLTerrain;
 import com.swing.defaults.DefaultButton;
 import com.swing.defaults.DefaultLabel;
 import com.swing.mapselector.MapSelectorDialog;
+import com.util.MemoryReclaimer;
 import com.util.Util;
 
 import java.awt.Dimension;
+import java.awt.Component;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
@@ -36,8 +42,10 @@ import java.awt.event.WindowEvent;
 import java.awt.event.WindowStateListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.concurrent.CompletableFuture;
 
 import javax.swing.ImageIcon;
+import javax.swing.BorderFactory;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JMenuBar;
@@ -48,8 +56,9 @@ import javax.swing.filechooser.FileFilter;
 
 /**
  * L2J source.
- * 
+ *
  * @author Forsaiken aka Patrick
+ * @author Maneco2
  */
 @SuppressWarnings("serial")
 public final class FrameMain extends JFrame implements ActionListener {
@@ -90,6 +99,7 @@ public final class FrameMain extends JFrame implements ActionListener {
 
 	private final MapSelectorDialog _mapSelector;
 	private final DialogConfig _dialogConfig;
+	private final DialogAbout _dialogAbout;
 
 	private final JMenuBar _menuBar;
 	private final DefaultButton _buttonConfig;
@@ -97,6 +107,7 @@ public final class FrameMain extends JFrame implements ActionListener {
 	private final DefaultButton _buttonJumpTo;
 	private final DefaultButton _buttonSave;
 	private final DefaultButton _buttonHelp;
+	private final DefaultButton _buttonTheme;
 	private final DefaultLabel _labelLogoL2j;
 
 	private final JFileChooser _fileChooser;
@@ -107,8 +118,13 @@ public final class FrameMain extends JFrame implements ActionListener {
 	private int _transitionCandidateX = Integer.MIN_VALUE;
 	private int _transitionCandidateY = Integer.MIN_VALUE;
 	private int _transitionCandidateFrames;
+	private volatile boolean _streamingRebuildPending;
+	private int _streamingCenterX = Integer.MIN_VALUE;
+	private int _streamingCenterY = Integer.MIN_VALUE;
+	private int _streamingRadius;
 	private boolean _maximizedState;
 	private final RegionLoadManager _regionLoadManager = new RegionLoadManager();
+	private final NeighborLoadingOverlay _neighborLoadingOverlay = new NeighborLoadingOverlay();
 
 	private FrameMain() {
 		super(Config.APP_NAME + " [Beta " + Config.APP_VERSION + "]");
@@ -118,7 +134,7 @@ public final class FrameMain extends JFrame implements ActionListener {
 			public final void windowClosing(final WindowEvent e) {
 				saveWindowState();
 				final GeoRegion region = GeoEngine.getInstance().getActiveRegion();
-				if (region != null && !region.allDataEqual()) {
+				if (region != null && region.isModified()) {
 					final int choice = JOptionPane.showConfirmDialog(FrameMain.getInstance(),
 							"Region " + region.getName() + " was modified.\nWould u like to save it before closing?",
 							"Save and exit", JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
@@ -155,6 +171,7 @@ public final class FrameMain extends JFrame implements ActionListener {
 		_panelDirectNswe = new PanelDirectNswe();
 		_mapSelector = new MapSelectorDialog(this, this::openRegionFromMapSelector);
 		_dialogConfig = new DialogConfig(this);
+		_dialogAbout = new DialogAbout(this);
 
 		_menuBar = new JMenuBar();
 		_buttonConfig = new DefaultButton(loadToolbarIcon("config.png"));
@@ -172,6 +189,15 @@ public final class FrameMain extends JFrame implements ActionListener {
 		_buttonHelp = new DefaultButton(loadToolbarIcon("help.png"));
 		_buttonHelp.setToolTipText("About L2GeoEditor");
 		_buttonHelp.addActionListener(this);
+		_buttonTheme = new DefaultButton(loadToolbarIcon("theme-toggle.png"));
+		_buttonTheme.addActionListener(this);
+		updateThemeButtonTooltip();
+		configureToolbarButton(_buttonConfig);
+		configureToolbarButton(_buttonJumpTo);
+		configureToolbarButton(_buttonOpen);
+		configureToolbarButton(_buttonSave);
+		configureToolbarButton(_buttonHelp);
+		configureToolbarButton(_buttonTheme);
 		BufferedImage img = Util.loadImage("./data/icon/l2jserverlogo.png");
 		_labelLogoL2j = new DefaultLabel(
 				new ImageIcon(Util.scaleImage(img, (int) (img.getWidth() * (32D / img.getHeight())), 32, 2)));
@@ -184,6 +210,9 @@ public final class FrameMain extends JFrame implements ActionListener {
 
 		setJMenuBar(_menuBar);
 		initLayout();
+		setGlassPane(_neighborLoadingOverlay);
+		_regionLoadManager.setProgressListener(progress -> _neighborLoadingOverlay.updateProgress(
+				progress.completed(), progress.total(), progress.phase()));
 
 		setMinimumSize(new Dimension(1024, 768));
 		if (Config.WINDOW_WIDTH >= 1024 && Config.WINDOW_HEIGHT >= 768) {
@@ -235,6 +264,8 @@ public final class FrameMain extends JFrame implements ActionListener {
 		gbc.fill = GridBagConstraints.BOTH;
 
 		_menuBar.setLayout(new GridBagLayout());
+		_menuBar.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
+		gbc.insets = new Insets(0, 2, 0, 2);
 
 		gbc.gridx = 0;
 		gbc.gridy = 0;
@@ -310,10 +341,14 @@ public final class FrameMain extends JFrame implements ActionListener {
 		gbc.gridheight = 1;
 		gbc.weightx = 0;
 		gbc.weighty = 0;
+		_menuBar.add(_buttonTheme, gbc);
 
 		// gbc.insets = new Insets(2, 2, 2, 2);
 
 		_panelRight.setLayout(new GridBagLayout());
+		_panelRight.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
+		_panelRight.setMinimumSize(new Dimension(240, 0));
+		gbc.insets = new Insets(2, 0, 2, 0);
 
 		gbc.gridx = 0;
 		gbc.gridy = 0;
@@ -348,6 +383,7 @@ public final class FrameMain extends JFrame implements ActionListener {
 		_panelRight.add(_panelDirectNswe, gbc);
 
 		setLayout(new GridBagLayout());
+		gbc.insets = new Insets(0, 0, 0, 0);
 
 		gbc.gridx = 0;
 		gbc.gridy = 0;
@@ -409,6 +445,10 @@ public final class FrameMain extends JFrame implements ActionListener {
 		return _selectedCell;
 	}
 
+	public final void showBlockContextMenu(final Component invoker, final int x, final int y) {
+		_panelBlockConvert.showContextMenu(invoker, x, y, _panelLayers);
+	}
+
 	public final boolean isSelectedGeoCell(final GeoCell cell) {
 		return _selectedCell == cell;
 	}
@@ -421,9 +461,9 @@ public final class FrameMain extends JFrame implements ActionListener {
 
 	/** Requests loading of the region reached by camera movement. */
 	public final void checkRegionTransition(final int geoX, final int geoY) {
-		if (!Config.FULL_MAP) return;
+		if (!RegionStreamingPolicy.shouldTransitionRegion(Config.FULL_MAP)) return;
 		final GeoRegion current = GeoEngine.getInstance().getActiveRegion();
-		if (current == null || _regionTransitionPending) return;
+		if (current == null || _regionTransitionPending || _streamingRebuildPending) return;
 		final int regionX = GeoEngine.getRegionXY(geoX);
 		final int regionY = GeoEngine.getRegionXY(geoY);
 		if (current.getRegionX() == regionX && current.getRegionY() == regionY) {
@@ -436,9 +476,15 @@ public final class FrameMain extends JFrame implements ActionListener {
 			_transitionCandidateFrames = 0;
 		}
 		if (++_transitionCandidateFrames < 3) return;
+		final RegionLoadManager.RegionKey targetKey = new RegionLoadManager.RegionKey(regionX, regionY);
+		final boolean outsideWindow = RegionWindowPlan.isOutsideWindow(_streamingCenterX, _streamingCenterY,
+				regionX, regionY, _streamingRadius);
+		if (outsideWindow) {
+			prepareOutsideRegionTransition(targetKey, geoX, geoY);
+			return;
+		}
 		if (!GeoEngine.getInstance().isRegionLoaded(regionX, regionY)) return;
-		final RegionLoadManager.State targetState =
-				_regionLoadManager.getState(new RegionLoadManager.RegionKey(regionX, regionY));
+		final RegionLoadManager.State targetState = _regionLoadManager.getState(targetKey);
 		// Never fall back to a synchronous disk load while the streaming worker is
 		// still preparing the target region.
 		if (targetState != RegionLoadManager.State.LOADED) return;
@@ -449,7 +495,7 @@ public final class FrameMain extends JFrame implements ActionListener {
 			@Override
 			public final void run() {
 				try {
-					openRegionFromMapSelector(regionX, regionY, geoX, geoY, Float.valueOf(cameraY));
+					openRegionFromMapSelector(regionX, regionY, geoX, geoY, Float.valueOf(cameraY), true);
 				} finally {
 					_regionTransitionPending = false;
 				}
@@ -457,28 +503,98 @@ public final class FrameMain extends JFrame implements ActionListener {
 		});
 	}
 
-	/** Updates the bounded streaming window without replacing the active region renderer. */
-	private final void updateRegionLoadWindow(final int regionX, final int regionY) {
-		if (!Config.FULL_MAP) {
-			GeoEngine.getInstance().selectSingleRegion(regionX, regionY);
-			_regionLoadManager.selectSingleCenter(regionX, regionY);
-			return;
-		}
-		GeoEngine.getInstance().selectRegionWindow(regionX, regionY);
-		_regionLoadManager.selectCenter(regionX, regionY);
-		_regionLoadManager.mark(new RegionLoadManager.RegionKey(regionX, regionY), RegionLoadManager.State.LOADED);
-		_regionLoadManager.checkNeighborsAsync(key -> GeoEngine.hasGeoFile(key.x(), key.y(), true))
-				.thenCompose(ignored -> _regionLoadManager.loadAvailableNeighborsAsync(
-						key -> {
-							final long start = System.nanoTime();
-							final boolean loaded = GeoEngine.getInstance().loadNeighborRegion(key.x(), key.y());
-							GLDisplay.getInstance().getPerformanceMetricsCollector().recordRegionLoad(
-									(System.nanoTime() - start) / 1000L, false);
-							return loaded;
-						}));
+	private void prepareOutsideRegionTransition(final RegionLoadManager.RegionKey targetKey,
+			final int geoX, final int geoY) {
+		_regionTransitionPending = true;
+		_transitionCandidateFrames = 0;
+		_neighborLoadingOverlay.start(1, "Preparing next region");
+		GLDisplay.getInstance().getInput().setEnabled(false);
+		final float cameraY = GLDisplay.getInstance().getCamera().getY();
+		_regionLoadManager.prepareTransitionRegionAsync(targetKey,
+				key -> GeoEngine.getInstance().prepareTransitionRegion(key.x(), key.y()))
+				.whenComplete((loaded, exception) -> SwingUtilities.invokeLater(() -> {
+					if (exception != null)
+						exception.printStackTrace();
+					if (exception == null && Boolean.TRUE.equals(loaded)) {
+						_neighborLoadingOverlay.updateProgress(1, 1, "Opening region");
+						openRegionFromMapSelector(targetKey.x(), targetKey.y(), geoX, geoY,
+								Float.valueOf(cameraY), true);
+					} else
+						// Do not repeatedly retry a missing external region every three frames.
+						_transitionCandidateFrames = -1_000_000;
+					if (!_streamingRebuildPending) {
+						_neighborLoadingOverlay.finish(() -> {
+							GLDisplay.getInstance().getInput().setEnabled(true);
+							GLDisplay.getInstance().requestFocus();
+						});
+					}
+					_regionTransitionPending = false;
+				}));
 	}
 
-	public final void onFullMapModeChanged() {
+	/** Updates the bounded streaming window without replacing the active region renderer. */
+	private final void updateRegionLoadWindow(final int regionX, final int regionY) {
+		final int previousNeighborCount = RegionWindowPlan.neighborCountForRadius(_streamingRadius);
+		if (!RegionStreamingPolicy.shouldLoadNeighbors(Config.FULL_MAP, Config.AUXILIARY_TERRAINS)) {
+			GeoEngine.getInstance().selectSingleRegion(regionX, regionY);
+			MemoryReclaimer.reclaimAfterWindowChangeAsync(previousNeighborCount, 0);
+			_regionLoadManager.selectSingleCenter(regionX, regionY);
+			_streamingCenterX = regionX;
+			_streamingCenterY = regionY;
+			_streamingRadius = 0;
+			return;
+		}
+		final int radius = RegionWindowPlan.radiusForNeighborCount(Config.MAX_NEIGHBOR_TEXTURES);
+		final int nextNeighborCount = RegionWindowPlan.neighborCountForRadius(radius);
+		if (radius == 0) {
+			GeoEngine.getInstance().selectSingleRegion(regionX, regionY);
+			MemoryReclaimer.reclaimAfterWindowChangeAsync(previousNeighborCount, 0);
+			_regionLoadManager.selectSingleCenter(regionX, regionY);
+			_streamingCenterX = regionX;
+			_streamingCenterY = regionY;
+			_streamingRadius = 0;
+			return;
+		}
+		_streamingRebuildPending = true;
+		_streamingCenterX = regionX;
+		_streamingCenterY = regionY;
+		_streamingRadius = radius;
+		// Invalidates any worker from the previous anchor before CPU/GL cleanup.
+		_regionLoadManager.selectSingleCenter(regionX, regionY);
+		_neighborLoadingOverlay.start(RegionWindowPlan.neighborCountForRadius(radius), "Releasing previous regions");
+		GLDisplay.getInstance().getInput().setEnabled(false);
+		final CompletableFuture<Void> rebuild = GeoEngine.getInstance().resetRegionWindow(regionX, regionY, radius)
+				.thenCompose(ignored -> {
+					if (MemoryReclaimer.isCollectionRecommended())
+						_neighborLoadingOverlay.updateProgress(0,
+								RegionWindowPlan.neighborCountForRadius(radius), "Reclaiming previous maps");
+					return MemoryReclaimer.reclaimAfterWindowChangeAsync(previousNeighborCount, nextNeighborCount);
+				})
+				.thenCompose(ignored -> {
+					_regionLoadManager.selectCenter(regionX, regionY, radius);
+					_regionLoadManager.mark(new RegionLoadManager.RegionKey(regionX, regionY),
+							RegionLoadManager.State.LOADED);
+					return _regionLoadManager.checkNeighborsAsync(key -> GeoEngine.hasGeoFile(key.x(), key.y(), true));
+				})
+				.thenCompose(ignored -> _regionLoadManager.loadAvailableNeighborsAsync(key -> {
+					final long start = System.nanoTime();
+					final boolean loaded = GeoEngine.getInstance().loadNeighborRegion(key.x(), key.y());
+					GLDisplay.getInstance().getPerformanceMetricsCollector().recordRegionLoad(
+							(System.nanoTime() - start) / 1000L, false);
+					return loaded;
+				}));
+		rebuild.whenComplete((ignored, exception) -> {
+			if (exception != null)
+				exception.printStackTrace();
+			_neighborLoadingOverlay.finish(() -> {
+				_streamingRebuildPending = false;
+				GLDisplay.getInstance().getInput().setEnabled(true);
+				GLDisplay.getInstance().requestFocus();
+			});
+		});
+	}
+
+	public final void onRegionStreamingModeChanged() {
 		final GeoRegion active = GeoEngine.getInstance().getActiveRegion();
 		if (active != null)
 			updateRegionLoadWindow(active.getRegionX(), active.getRegionY());
@@ -489,14 +605,19 @@ public final class FrameMain extends JFrame implements ActionListener {
 	}
 
 	private final void openRegionFromMapSelector(final int regionX, final int regionY, final int geoX, final int geoY) {
-		openRegionFromMapSelector(regionX, regionY, geoX, geoY, null);
+		openRegionFromMapSelector(regionX, regionY, geoX, geoY, null, false);
 	}
 
 	private final void openRegionFromMapSelector(final int regionX, final int regionY, final int geoX, final int geoY,
 			final Float preservedCameraY) {
+		openRegionFromMapSelector(regionX, regionY, geoX, geoY, preservedCameraY, false);
+	}
+
+	private final void openRegionFromMapSelector(final int regionX, final int regionY, final int geoX, final int geoY,
+			final Float preservedCameraY, final boolean automaticTransition) {
 		final GeoRegion current = GeoEngine.getInstance().getActiveRegion();
 		if (current != null && (current.getRegionX() != regionX || current.getRegionY() != regionY)
-				&& !current.allDataEqual()) {
+				&& current.isModified()) {
 			final int choice = JOptionPane.showConfirmDialog(this,
 					"Region " + current.getName() + " was modified.\nWould you like to save it before changing region?",
 					"Save before changing region", JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
@@ -505,36 +626,46 @@ public final class FrameMain extends JFrame implements ActionListener {
 				new DialogSave(this, current, new Runnable() {
 					@Override
 					public final void run() {
-						loadRegionFromSelector(regionX, regionY, geoX, geoY, preservedCameraY);
+						loadRegionFromSelector(regionX, regionY, geoX, geoY, preservedCameraY, automaticTransition);
 					}
 				}).setVisible(true);
 				return;
 			}
 		}
-		loadRegionFromSelector(regionX, regionY, geoX, geoY, preservedCameraY);
+		loadRegionFromSelector(regionX, regionY, geoX, geoY, preservedCameraY, automaticTransition);
 	}
 
 	private final void loadRegionFromSelector(final int regionX, final int regionY, final int geoX, final int geoY,
-			final Float preservedCameraY) {
+			final Float preservedCameraY, final boolean automaticTransition) {
 		try {
 			final long loadStart = System.nanoTime();
 			GeoEngine.getInstance().activateRegion(regionX, regionY);
-			GLDisplay.getInstance().getPerformanceMetricsCollector().recordRegionDiscard(
-					GeoEngine.getInstance().getLastRegionDiscardMicros());
 			GLDisplay.getInstance().getPerformanceMetricsCollector().recordRegionRead(
 					GeoEngine.getInstance().getLastRegionReadMicros());
 			GLDisplay.getInstance().getPerformanceMetricsCollector().recordRegionLoad(
 					(System.nanoTime() - loadStart) / 1000L, true);
 			if (GeoEngine.getInstance().getActiveRegion() != null) {
-				updateRegionLoadWindow(regionX, regionY);
+				final boolean outsideWindow = RegionWindowPlan.isOutsideWindow(_streamingCenterX, _streamingCenterY,
+						regionX, regionY, _streamingRadius);
+				if (!automaticTransition || outsideWindow)
+					updateRegionLoadWindow(regionX, regionY);
 				final int selectedZ = GeoEngine.getInstance().nGetCell(geoX, geoY, 0).getHeight();
 				final float cameraY = preservedCameraY == null ? selectedZ / 16f + CAMERA_HEIGHT_OFFSET
 						: preservedCameraY.floatValue();
 				GLDisplay.getInstance().getCamera().setXYZ(geoX, cameraY, geoY);
 			}
+		} catch (final GeoFileNotFoundException exception) {
+			JOptionPane.showMessageDialog(this,
+					"Geodata for region " + (regionX + 10) + "_" + (regionY + 10) + " is not available.\n"
+							+ "Expected file: " + exception.getFile().getPath() + "\n\n"
+							+ "The current region remains open.",
+					"Region unavailable", JOptionPane.WARNING_MESSAGE);
 		} catch (final Exception exception) {
 			exception.printStackTrace();
-			JOptionPane.showMessageDialog(this, "Could not open the region.", "Error", JOptionPane.ERROR_MESSAGE);
+			final String details = exception.getMessage() == null ? exception.getClass().getSimpleName()
+					: exception.getMessage();
+			JOptionPane.showMessageDialog(this, "Could not open the region.\n\n" + details,
+					"Unexpected error", JOptionPane.ERROR_MESSAGE);
 		}
 	}
 
@@ -557,6 +688,7 @@ public final class FrameMain extends JFrame implements ActionListener {
 						"Save Region UNKOWN?!?", JOptionPane.INFORMATION_MESSAGE);
 			}
 		} else if (e.getSource() == _buttonOpen) {
+			ThemeManager.refreshDetached(_fileChooser);
 			if (_fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
 				final File file = _fileChooser.getSelectedFile();
 				if (file != null && GeoEngine.GEO_FILE_FILTER.accept(file)) {
@@ -566,11 +698,11 @@ public final class FrameMain extends JFrame implements ActionListener {
 					final int geoX = GeoEngine.getGeoXY(regionX, 128);
 					final int geoY = GeoEngine.getGeoXY(regionY, 128);
 
-					final boolean l2j = !file.getName().toLowerCase().equals(".dat");
+					final boolean l2j = !file.getName().toLowerCase().endsWith(".dat");
 					final GeoRegion region = GeoEngine.getInstance().getActiveRegion();
 					if (region != null) {
 						if (region.getRegionX() != regionX || region.getRegionY() != regionY) {
-							if (!region.allDataEqual()) {
+							if (region.isModified()) {
 								switch (JOptionPane.showConfirmDialog(FrameMain.getInstance(),
 										"Region " + region.getName() + " was modified.\nWould u like to save it?",
 										"Save...", JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE)) {
@@ -579,14 +711,16 @@ public final class FrameMain extends JFrame implements ActionListener {
 										@Override
 										public final void run() {
 											try {
-												GeoEngine.getInstance().unload();
-												GeoEngine.getInstance().reloadGeo(regionX, regionY, l2j, file);
+											GeoEngine.getInstance().unload();
+											GeoEngine.getInstance().reloadGeo(regionX, regionY, l2j, file);
 
-												if (GeoEngine.getInstance().getActiveRegion() != null)
-													GLDisplay.getInstance().getCamera().setXYZ(geoX,
-																		GeoEngine.getInstance().nGetCell(geoX, geoY, 0).getHeight()
-																				/ 16f + CAMERA_HEIGHT_OFFSET,
+											if (GeoEngine.getInstance().getActiveRegion() != null) {
+												updateRegionLoadWindow(regionX, regionY);
+												GLDisplay.getInstance().getCamera().setXYZ(geoX,
+															GeoEngine.getInstance().nGetCell(geoX, geoY, 0).getHeight()
+																	/ 16f + CAMERA_HEIGHT_OFFSET,
 															geoY);
+											}
 											} catch (final Exception e1) {
 												e1.printStackTrace();
 											}
@@ -618,37 +752,37 @@ public final class FrameMain extends JFrame implements ActionListener {
 						}
 					}
 
-					if (GeoEngine.getInstance().getActiveRegion() != null)
+					if (GeoEngine.getInstance().getActiveRegion() != null) {
+						updateRegionLoadWindow(regionX, regionY);
 						GLDisplay.getInstance().getCamera().setXYZ(geoX,
 							GeoEngine.getInstance().nGetCell(geoX, geoY, 0).getHeight() / 16f + CAMERA_HEIGHT_OFFSET, geoY);
+					}
 				}
 			}
 		} else if (e.getSource() == _buttonConfig) {
+			ThemeManager.refreshDetached(_dialogConfig);
 			_dialogConfig.setVisible(true);
 		} else if (e.getSource() == _buttonHelp) {
-			JOptionPane.showMessageDialog(this, "<html><b>L2GeoEditor</b><br>"
-					+ "Controls:<br><table>" + "<tr><td>Look around:</td><td>Hold RIGHT-MOUSE and move</td></tr>"
-					+ "<tr><td>Move around:</td><td>Use WASD and QE</td></tr>"
-					+ "<tr><td>Move faster:</td><td>Hold SPACE while moving</td></tr>"
-					+ "<tr><td>Select a single cell:</td><td>LEFT-MOUSE-CLICK on any cell</td></tr>"
-					+ "<tr><td>Select multiple cells:</td><td>Hold SHIFT while selecting</td></tr>"
-					+ "<tr><td>Select a whole block:</td><td>Hold ALT while selecting</td></tr>"
-					+ "<tr><td>Unselect a cell:</td><td>Hold SHIFT and LEFT-MOUSE-CLICK on it again</td></tr>"
-					+ "<tr><td>Special MultiLayer:</td><td>You see a white box when selecting</td></tr>"
-					+ "<tr><td>*</td><td>This box is you selection radius, only cells in this box will be selected</td></tr>"
-					+ "<tr><td>*</td><td>To change the radius use the MOUSE_WHEEL or MIDDLE_MOUSE_CLICK to (un)set radius to infinite</td></tr>"
-					+ "<tr><td>*</td><td>To change it faster hold SPACE while using the MOUSE_WHEEL</td></tr>"
-					+ "<tr><td>Changing height:</td><td>To change the height of the selected cells hold CTRL while using the MOUSE_WHEEL</td></tr>"
-					+ "<tr><td>*</td><td>To change the height faster hold SPACE while using the MOUSE_WHEEL</td></tr>"
-					+ "<tr><td>Dis/Enable terrain:</td><td>Press T (toggle)</td></tr>"
-					+ "<tr><td>Dis/Enable terrain wireframe:</td><td>Press R (toggle)</td></tr>"
-					+ "<tr><td>Dis/Enable grid:</td><td>Press G (toggle)</td></tr>"
-					+ "<tr><td>Freeze/Unfreeze grid:</td><td>Press F (toggle)</td></tr>" + "</table><br>"
-					+ "Note: The editor window need focus to accept inputs!<br><br>"
-					+ "This programm is FREE and licensed under GNU GPLv3 <i>http://www.gnu.org/licenses/</i><br>"
-					+ "Use it on your OWN RISC! I will not take an ANY WARRANTY!<br><br>"
-					+ "<i>http://code.google.com/p/g3d-editor/</i>" + "</html>", "About",
-					JOptionPane.INFORMATION_MESSAGE);
+			ThemeManager.refreshDetached(_dialogAbout);
+			_dialogAbout.setLocationRelativeTo(this);
+			_dialogAbout.setVisible(true);
+		} else if (e.getSource() == _buttonTheme) {
+			ThemeManager.toggle();
+			ThemeManager.refreshDetached(_fileChooser);
+			updateThemeButtonTooltip();
 		}
+	}
+
+	private static void configureToolbarButton(final DefaultButton button) {
+		final Dimension size = new Dimension(58, 42);
+		button.setPreferredSize(size);
+		button.setMinimumSize(size);
+		button.setMaximumSize(size);
+		button.setMargin(new Insets(4, 8, 4, 8));
+		button.setFocusPainted(false);
+	}
+
+	private void updateThemeButtonTooltip() {
+		_buttonTheme.setToolTipText(ThemeManager.isDark() ? "Switch to Light theme" : "Switch to Dark theme");
 	}
 }
