@@ -20,9 +20,9 @@ import com.geo.GeoEngine;
 import com.swing.FrameMain;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoCellCM extends GeoCell {
 	private byte _cellX;

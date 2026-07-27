@@ -23,9 +23,9 @@ import javax.media.opengl.GL2;
 import com.jogamp.common.nio.Buffers;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GLUniformVec3fv extends GLUniform {
 	private final FloatBuffer _buffer;

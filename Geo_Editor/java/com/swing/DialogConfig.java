@@ -1,3 +1,17 @@
+/*
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 package com.swing;
 
 import com.Config;
@@ -5,6 +19,7 @@ import com.jogl.GLCellRenderSelector;
 import com.jogl.GLCellRenderer;
 import com.jogl.GLDisplay;
 import com.jogl.renderer.DLLoDRenderer;
+import com.jogl.renderer.VBOGLSLRenderer;
 import com.swing.defaults.DefaultButton;
 import com.swing.defaults.DefaultLabel;
 import com.swing.defaults.DefaultTextField;
@@ -13,6 +28,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
+import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
@@ -24,6 +40,8 @@ import java.util.Hashtable;
 import javax.media.opengl.GL2;
 import javax.media.opengl.GLContext;
 import javax.swing.BorderFactory;
+import javax.swing.AbstractAction;
+import javax.swing.JComponent;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
@@ -31,9 +49,15 @@ import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
+import javax.swing.KeyStroke;
 import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.filechooser.FileFilter;
 
+/**
+ * Configuration dialog for visualization, geodata and performance options.
+ * @author Maneco2
+ * @version 1.0
+ */
 @SuppressWarnings("serial")
 public final class DialogConfig extends JDialog implements MouseListener, ActionListener {
 	private static final FileFilter DIR_FILTER = new FileFilter() {
@@ -65,10 +89,13 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 	private final JPanel _panelEditor;
 	private final JPanel _panelCheckButtons;
 	private final JCheckBox _checkTerrainDefaultOn;
-	private final JCheckBox _checkVSync;
 	private final JCheckBox _checkTransparency;
-	private final JCheckBox _checkMultiThreading;
 	private final JCheckBox _checkDrawOutline;
+	private final JCheckBox _checkFullMap;
+	private final JCheckBox _checkAuxiliaryTerrains;
+	private final JCheckBox _checkShowGeodataGrid;
+	private final JCheckBox _checkCircularGeodataGrid;
+	private final JCheckBox _checkFullTexturedTerrain;
 
 	private final DefaultLabel _labelCellRenderer;
 	private final JComboBox<Object> _comboCellRenderer;
@@ -78,6 +105,8 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 
 	private final DefaultLabel _labelGridRange;
 	private final JSlider _sliderGridRange;
+	private final DefaultLabel _labelNeighborTextures;
+	private final JSlider _sliderNeighborTextures;
 
 	private final DialogColorChooser _dialogColor;
 	private final DefaultButton _buttonChooseColors;
@@ -97,6 +126,7 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 
 	public DialogConfig(final JFrame frame) {
 		super(frame, "Config", true);
+		setDefaultCloseOperation(JDialog.HIDE_ON_CLOSE);
 
 		_fileChooser = new JFileChooser();
 		_fileChooser.setFileFilter(DIR_FILTER);
@@ -113,11 +143,20 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_panelEditor.setBorder(BorderFactory.createTitledBorder("Editor"));
 
 		_panelCheckButtons = new JPanel();
-		_checkTerrainDefaultOn = new JCheckBox("Terrain default ON");
-		_checkVSync = new JCheckBox("VSync");
+		_checkTerrainDefaultOn = new JCheckBox("Show textured terrain");
+		_checkTerrainDefaultOn.setToolTipText("Show or hide the textured terrain immediately (shortcut: T).");
 		_checkTransparency = new JCheckBox("Transparency");
-		_checkMultiThreading = new JCheckBox("MultiThreading");
 		_checkDrawOutline = new JCheckBox("Draw Outline");
+		_checkFullMap = new JCheckBox("Full Map (stream neighboring regions)");
+		_checkFullMap.setToolTipText("ON: load and cross neighboring regions. OFF: keep only the active region.");
+		_checkAuxiliaryTerrains = new JCheckBox("Auxiliary terrains");
+		_checkAuxiliaryTerrains.setToolTipText("Show the green terrain meshes of loaded neighboring regions.");
+		_checkShowGeodataGrid = new JCheckBox("Show Geodata Grid");
+		_checkShowGeodataGrid.setToolTipText("Show the editable geodata grid and enable mouse editing.");
+		_checkCircularGeodataGrid = new JCheckBox("Circular Geodata Grid (selectable)");
+		_checkCircularGeodataGrid.setToolTipText("Show and select geodata cells inside a circular area around the camera.");
+		_checkFullTexturedTerrain = new JCheckBox("Show full textured terrain");
+		_checkFullTexturedTerrain.setToolTipText("Show textured terrain for every loaded Full Map region.");
 
 		_labelCellRenderer = new DefaultLabel("CellRenderer:");
 		_comboCellRenderer = new JComboBox<Object>();
@@ -150,6 +189,11 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		}
 		_sliderGridRange.setLabelTable(rangeTable);
 		_sliderGridRange.setPaintLabels(true);
+		_labelNeighborTextures = new DefaultLabel("Max textured neighbors:");
+		_sliderNeighborTextures = new JSlider(1, 8, Config.MAX_NEIGHBOR_TEXTURES);
+		_sliderNeighborTextures.setMajorTickSpacing(1);
+		_sliderNeighborTextures.setPaintTicks(true);
+		_sliderNeighborTextures.setPaintLabels(true);
 
 		_dialogColor = new DialogColorChooser(this);
 		_buttonChooseColors = new DefaultButton("Choose cell/block colors");
@@ -170,180 +214,103 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_buttonOk.addActionListener(this);
 		_buttonCancel = new DefaultButton("Cancel");
 		_buttonCancel.addActionListener(this);
+		getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+				.put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel-config");
+		getRootPane().getActionMap().put("cancel-config", new AbstractAction() {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public final void actionPerformed(final ActionEvent event) {
+				_buttonCancel.doClick();
+			}
+		});
 
 		initLayout();
 	}
 
 	private final void initLayout() {
 		final GridBagConstraints gbc = new GridBagConstraints();
-		gbc.insets = new Insets(2, 2, 2, 2);
-		gbc.anchor = GridBagConstraints.CENTER;
+		gbc.insets = new Insets(4, 6, 4, 6);
+		gbc.anchor = GridBagConstraints.WEST;
 		gbc.fill = GridBagConstraints.BOTH;
 
 		_panelMisc.setLayout(new GridBagLayout());
+		_panelMisc.setBorder(BorderFactory.createTitledBorder("Visualization"));
 
 		gbc.gridx = 0;
 		gbc.gridy = 0;
-		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
 		gbc.weightx = 0;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
 		_panelMisc.add(_labelLookAndFeel, gbc);
 
 		gbc.gridx = 1;
-		gbc.gridy = 0;
-		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
 		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
 		_panelMisc.add(_comboLookAndFeel, gbc);
 
-		_panelCheckButtons.setLayout(new GridLayout(3, 2));
+		_panelCheckButtons.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+		_panelCheckButtons.setLayout(new GridLayout(2, 2, 16, 6));
 		_panelCheckButtons.add(_checkTerrainDefaultOn);
-		_panelCheckButtons.add(_checkVSync);
 		_panelCheckButtons.add(_checkTransparency);
-		_panelCheckButtons.add(_checkMultiThreading);
 		_panelCheckButtons.add(_checkDrawOutline);
+		_panelCheckButtons.add(_checkFullTexturedTerrain);
+
+		gbc.gridx = 0;
+		gbc.gridy = 1;
+		gbc.gridwidth = 2;
+		gbc.weightx = 1;
+		_panelMisc.add(_panelCheckButtons, gbc);
 
 		_panelEditor.setLayout(new GridBagLayout());
-
+		_panelEditor.setBorder(BorderFactory.createTitledBorder("Performance"));
 		gbc.gridx = 0;
 		gbc.gridy = 0;
-		gbc.gridwidth = 2;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_panelCheckButtons, gbc);
-
-		gbc.gridx = 0;
-		gbc.gridy = 1;
 		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
-		gbc.weightx = 0;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_labelCellRenderer, gbc);
-
+		_panelEditor.add(_checkFullMap, gbc);
 		gbc.gridx = 1;
-		gbc.gridy = 1;
-		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_comboCellRenderer, gbc);
-
+		_panelEditor.add(_checkAuxiliaryTerrains, gbc);
 		gbc.gridx = 0;
+		gbc.gridy = 1;
+		gbc.gridwidth = 2;
+		_panelEditor.add(_labelNeighborTextures, gbc);
 		gbc.gridy = 2;
-		gbc.gridwidth = 2;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_labelDLLoDRange, gbc);
-
-		gbc.gridx = 0;
-		gbc.gridy = 3;
-		gbc.gridwidth = 2;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_sliderDLLoDRange, gbc);
-
-		gbc.gridx = 0;
-		gbc.gridy = 4;
-		gbc.gridwidth = 2;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_labelGridRange, gbc);
-
-		gbc.gridx = 0;
-		gbc.gridy = 5;
-		gbc.gridwidth = 2;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_sliderGridRange, gbc);
-
-		gbc.gridx = 0;
-		gbc.gridy = 6;
-		gbc.gridwidth = 2;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_buttonChooseColors, gbc);
-
-		gbc.gridx = 0;
-		gbc.gridy = 7;
-		gbc.gridwidth = 2;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_buttonChooseColors, gbc);
-
-		gbc.gridx = 0;
-		gbc.gridy = 8;
-		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
-		gbc.weightx = 0;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_labelNSWETexture, gbc);
-
-		gbc.gridx = 1;
-		gbc.gridy = 8;
-		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
-		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelEditor.add(_comboNSWETexture, gbc);
+		_panelEditor.add(_sliderNeighborTextures, gbc);
 
 		_panelGeodata.setLayout(new GridBagLayout());
 
 		gbc.gridx = 0;
 		gbc.gridy = 0;
 		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
-		gbc.weightx = 0;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
-		_panelGeodata.add(_labelGeodataPath, gbc);
+		gbc.weightx = 1;
+		_panelGeodata.add(_checkShowGeodataGrid, gbc);
 
 		gbc.gridx = 1;
-		gbc.gridy = 0;
+		_panelGeodata.add(_checkCircularGeodataGrid, gbc);
+
+		gbc.gridx = 0;
+		gbc.gridy = 1;
+		gbc.gridwidth = 2;
+		_panelGeodata.add(_labelGridRange, gbc);
+		gbc.gridy = 2;
+		_panelGeodata.add(_sliderGridRange, gbc);
+		gbc.gridy = 3;
+		_panelGeodata.add(_buttonChooseColors, gbc);
+
+		gbc.gridy = 4;
 		gbc.gridwidth = 1;
-		gbc.gridheight = 1;
+		gbc.weightx = 0;
+		_panelGeodata.add(_labelNSWETexture, gbc);
+		gbc.gridx = 1;
 		gbc.weightx = 1;
-		gbc.weighty = 0;
-		gbc.ipadx = 0;
-		gbc.ipady = 0;
+		_panelGeodata.add(_comboNSWETexture, gbc);
+
+		gbc.gridx = 0;
+		gbc.gridy = 5;
+		gbc.weightx = 0;
+		_panelGeodata.add(_labelGeodataPath, gbc);
+		gbc.gridx = 1;
+		gbc.weightx = 1;
 		_panelGeodata.add(_fieldGeodataPath, gbc);
 
-		_panelButtons.setLayout(new GridLayout(1, 2));
+		_panelButtons.setLayout(new GridLayout(1, 2, 8, 0));
 		_panelButtons.add(_buttonOk);
 		_panelButtons.add(_buttonCancel);
 
@@ -353,7 +320,7 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		gbc.gridy = 0;
 		gbc.gridwidth = 1;
 		gbc.gridheight = 1;
-		gbc.weightx = 0;
+		gbc.weightx = 1;
 		gbc.weighty = 0;
 		gbc.ipadx = 0;
 		gbc.ipady = 0;
@@ -363,7 +330,7 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		gbc.gridy = 1;
 		gbc.gridwidth = 1;
 		gbc.gridheight = 1;
-		gbc.weightx = 0;
+		gbc.weightx = 1;
 		gbc.weighty = 0;
 		gbc.ipadx = 0;
 		gbc.ipady = 0;
@@ -373,7 +340,7 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		gbc.gridy = 2;
 		gbc.gridwidth = 1;
 		gbc.gridheight = 1;
-		gbc.weightx = 0;
+		gbc.weightx = 1;
 		gbc.weighty = 0;
 		gbc.ipadx = 0;
 		gbc.ipady = 0;
@@ -383,21 +350,28 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		gbc.gridy = 3;
 		gbc.gridwidth = 1;
 		gbc.gridheight = 1;
-		gbc.weightx = 0;
+		gbc.weightx = 1;
 		gbc.weighty = 0;
 		gbc.ipadx = 0;
 		gbc.ipady = 0;
 		add(_panelButtons, gbc);
 
 		pack();
-		setResizable(false);
+		setMinimumSize(new Dimension(760, 600));
+		if (getWidth() < 760 || getHeight() < 600)
+			setSize(Math.max(getWidth(), 760), Math.max(getHeight(), 600));
+		setResizable(true);
+		setLocationRelativeTo(getOwner());
 	}
 
 	public final void checkAvailableRenderers() {
-		for (final String name : GLCellRenderer.getAvailableRenderers((GL2) GLContext.getCurrentGL())) {
-			_comboCellRenderer.addItem(name);
-		}
-		_comboCellRenderer.setSelectedItem(Config.CELL_RENDERER);
+		_comboCellRenderer.removeAllItems();
+		_comboCellRenderer.addItem(VBOGLSLRenderer.NAME);
+		_comboCellRenderer.setSelectedItem(VBOGLSLRenderer.NAME);
+		_comboCellRenderer.setVisible(false);
+		_labelCellRenderer.setVisible(false);
+		_labelDLLoDRange.setVisible(false);
+		_sliderDLLoDRange.setVisible(false);
 	}
 
 	public final DialogColorChooser getColorChooser() {
@@ -416,11 +390,15 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 			setLocationRelativeTo(super.getOwner());
 
 			_checkTerrainDefaultOn.setSelected(Config.TERRAIN_DEFAULT_ON);
-			_checkVSync.setSelected(Config.V_SYNC);
 			_checkTransparency.setSelected(Config.USE_TRANSPARENCY);
-			_checkMultiThreading.setSelected(Config.USE_MULTITHREADING);
 			_checkDrawOutline.setSelected(Config.DRAW_OUTLINE);
+			_checkFullMap.setSelected(Config.FULL_MAP);
+			_checkAuxiliaryTerrains.setSelected(Config.AUXILIARY_TERRAINS);
+			_checkShowGeodataGrid.setSelected(Config.SHOW_GEODATA_GRID);
+			_checkCircularGeodataGrid.setSelected(Config.CIRCULAR_GEODATA_GRID);
+			_checkFullTexturedTerrain.setSelected(Config.FULL_TEXTURED_TERRAIN);
 			_sliderGridRange.setValue(Config.VIS_GRID_RANGE);
+			_sliderNeighborTextures.setValue(Config.MAX_NEIGHBOR_TEXTURES);
 			_comboLookAndFeel
 					.setSelectedItem(Config.getLookAndFeel(Config.LOOK_AND_FEEL, Config.getActiveLookAndFeel()));
 			_comboCellRenderer.setSelectedItem(Config.CELL_RENDERER);
@@ -476,17 +454,24 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		if (e.getSource() == this._buttonChooseColors) {
 			_dialogColor.setVisible(true);
 		} else if (e.getSource() == _buttonOk) {
+			final boolean fullMapChanged = Config.FULL_MAP != _checkFullMap.isSelected();
 			Config.TERRAIN_DEFAULT_ON = _checkTerrainDefaultOn.isSelected();
-			Config.V_SYNC = _checkVSync.isSelected();
 			Config.USE_TRANSPARENCY = _checkTransparency.isSelected();
-			Config.USE_MULTITHREADING = _checkMultiThreading.isSelected();
 			Config.DRAW_OUTLINE = _checkDrawOutline.isSelected();
+			Config.FULL_MAP = _checkFullMap.isSelected();
+			Config.AUXILIARY_TERRAINS = _checkAuxiliaryTerrains.isSelected();
+			Config.SHOW_GEODATA_GRID = _checkShowGeodataGrid.isSelected();
+			Config.CIRCULAR_GEODATA_GRID = _checkCircularGeodataGrid.isSelected();
+			Config.FULL_TEXTURED_TERRAIN = _checkFullTexturedTerrain.isSelected();
 			Config.VIS_GRID_RANGE = _sliderGridRange.getValue();
+			Config.MAX_NEIGHBOR_TEXTURES = _sliderNeighborTextures.getValue();
 			Config.LOOK_AND_FEEL = ((LookAndFeelInfo) _comboLookAndFeel.getSelectedItem()).getClassName();
-			Config.CELL_RENDERER = GLCellRenderer.validateRenderer((String) _comboCellRenderer.getSelectedItem(), null);
+			Config.CELL_RENDERER = VBOGLSLRenderer.NAME;
 			Config.DLLoD_RANGE = _sliderDLLoDRange.getValue();
 			Config.NSWE_TEXTURE_ID = (Integer) _comboNSWETexture.getSelectedItem();
 			FrameMain.getInstance().onNsweTexIdUpdated();
+			if (fullMapChanged)
+				FrameMain.getInstance().onFullMapModeChanged();
 
 			Config.save();
 			setVisible(false);

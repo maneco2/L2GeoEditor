@@ -19,9 +19,9 @@ import com.jogl.shader.GLUniform;
 import javax.media.opengl.GL2;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GLUniformVec2f extends GLUniform {
 	private float _v1;

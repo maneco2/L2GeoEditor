@@ -37,9 +37,9 @@ import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.util.texture.Texture;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GLShader {
 	private static final String readShader(final String file, final String type) {

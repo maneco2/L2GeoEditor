@@ -1,3 +1,17 @@
+/*
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 package com.swing;
 
 import com.util.Util;
@@ -11,11 +25,14 @@ import java.awt.Robot;
 import java.awt.image.BufferedImage;
 
 import javax.swing.JWindow;
+import javax.swing.SwingUtilities;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
+ * @author Maneco2
+ * @version 1.0
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 @SuppressWarnings("serial")
 public final class Splash extends JWindow implements Runnable {
@@ -65,7 +82,11 @@ public final class Splash extends JWindow implements Runnable {
 
 			setVisible(true);
 			new Thread(this).start();
-			_r1.run();
+			try {
+				SwingUtilities.invokeAndWait(_r1);
+			} catch (final Exception e) {
+				throw new RuntimeException("Unable to initialize the editor on the Swing EDT", e);
+			}
 		} else {
 			_r1.run();
 			while (!_r2.run()) {

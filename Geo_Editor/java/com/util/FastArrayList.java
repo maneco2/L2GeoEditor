@@ -26,9 +26,9 @@ import java.util.NoSuchElementException;
 import java.util.Random;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class FastArrayList<E> implements List<E> {
 	private final class FastIterator implements Iterator<E> {

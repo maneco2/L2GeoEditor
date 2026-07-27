@@ -14,9 +14,12 @@
  */
 package com.jogl;
 
+import com.Config;
+import com.geo.GeoEngine;
 import com.util.FastArrayList;
 
 import java.io.File;
+import java.awt.Color;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
@@ -25,11 +28,12 @@ import javax.media.opengl.GL2;
 import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.util.texture.Texture;
 import com.jogamp.opengl.util.texture.TextureIO;
+import com.jogamp.opengl.util.gl2.GLUT;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GLGUIRenderer {
 	public static final int TEXT_HEIGHT = 16;
@@ -41,7 +45,11 @@ public final class GLGUIRenderer {
 
 	private int _listId;
 	private Texture _fontTexture;
-	private Texture _compassTexture;
+	private Texture _regionMapTexture;
+	private Texture _playerMarkerTexture;
+	private String _regionMapName;
+	private float _regionMapAlpha = 1f;
+	private final GLUT _glut = new GLUT();
 
 	public GLGUIRenderer() {
 		_texts = new FastArrayList<>();
@@ -99,10 +107,9 @@ public final class GLGUIRenderer {
 			_fontTexture.setTexParameteri(GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_LINEAR);
 			_fontTexture.setTexParameteri(GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_LINEAR);
 
-			_compassTexture = TextureIO.newTexture(new File("./data/textures/compass.png"), false);
-			_compassTexture.enable();
-			_compassTexture.setTexParameteri(GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_LINEAR);
-			_compassTexture.setTexParameteri(GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_LINEAR);
+			_playerMarkerTexture = TextureIO.newTexture(new File("./data/icon/minimap-player-marker.png"), true);
+			_playerMarkerTexture.setTexParameteri(GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_LINEAR);
+			_playerMarkerTexture.setTexParameteri(GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_LINEAR);
 		} catch (final Exception e) {
 			e.printStackTrace();
 		}
@@ -110,8 +117,12 @@ public final class GLGUIRenderer {
 
 	public final void render(final GL2 gl) {
 		GLState.setBlendEnabled(gl, true);
+		// The cache may survive a pass rendered by another subsystem. Force the
+		// real OpenGL state before drawing the opaque-black font atlas additively.
+		gl.glBlendFunc(GL2.GL_ONE, GL2.GL_ONE);
 		GLState.setBlendFunc(gl, GL2.GL_ONE, GL2.GL_ONE);
 		GLState.setDepthTestEnabled(gl, false);
+		gl.glColor4f(1f, 1f, 1f, 1f);
 		GLState.glColor4f(gl, GLColor.WHITE);
 
 		gl.glMatrixMode(GL2.GL_PROJECTION);
@@ -123,6 +134,8 @@ public final class GLGUIRenderer {
 		gl.glLoadIdentity();
 		gl.glListBase(_listId - 32 + (128 * 0));
 
+		gl.glEnable(GL2.GL_TEXTURE_2D);
+		_fontTexture.enable();
 		_fontTexture.bind();
 
 		ByteBuffer buffer;
@@ -138,15 +151,11 @@ public final class GLGUIRenderer {
 				gl.glPopMatrix();
 			}
 		}
+		gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 		GLState.setBlendFunc(gl, GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 
 		gl.glListBase(0);
-		_compassTexture.bind();
-		gl.glPushMatrix();
-		gl.glTranslatef(COMPASS_HALF_HEIGHT, GLDisplay.getInstance().getHeight() - COMPASS_HALF_HEIGHT, 0);
-		gl.glRotatef(360f - GLDisplay.getInstance().getCamera().getRotY(), 0.0f, 0.0f, 1.0f);
-		gl.glCallList(_listId + 256);
-		gl.glPopMatrix();
+		renderRegionMiniMap(gl);
 
 		gl.glMatrixMode(GL2.GL_PROJECTION);
 		gl.glPopMatrix();
@@ -157,7 +166,93 @@ public final class GLGUIRenderer {
 	public final void dispose(final GL2 gl) {
 		gl.glDeleteLists(_listId, 256);
 		_fontTexture.destroy(gl);
-		_compassTexture.destroy(gl);
+		if (_regionMapTexture != null)
+			_regionMapTexture.destroy(gl);
+		if (_playerMarkerTexture != null)
+			_playerMarkerTexture.destroy(gl);
+	}
+
+	private final void renderRegionMiniMap(final GL2 gl) {
+		final com.geo.GeoRegion region = GeoEngine.getInstance().getActiveRegion();
+		if (region == null)
+			return;
+		final String name = region.getName();
+		if (!_regionMapNameEquals(name)) {
+			if (_regionMapTexture != null)
+				_regionMapTexture.destroy(gl);
+			_regionMapTexture = null;
+			_regionMapAlpha = 0f;
+			try {
+				_regionMapTexture = TextureIO.newTexture(new File("./data/textures/region/" + name + ".jpg"), false);
+				_regionMapTexture.setTexParameteri(GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_LINEAR);
+				_regionMapTexture.setTexParameteri(GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_LINEAR);
+				_regionMapName = name;
+			} catch (final Exception ignored) {
+				_regionMapName = name;
+			}
+		}
+		if (_regionMapTexture == null)
+			return;
+		final int size = Config.MINI_MAP_SIZE;
+		final int left = Config.MINI_MAP_MARGIN;
+		final int bottom = GLDisplay.getInstance().getHeight() - size - Config.MINI_MAP_MARGIN;
+		GLState.setBlendEnabled(gl, true);
+		GLState.setBlendFunc(gl, GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+		_regionMapTexture.enable();
+		_regionMapTexture.bind();
+		_regionMapAlpha = Math.min(1f, _regionMapAlpha + Config.MINI_MAP_FADE_STEP);
+		gl.glColor4f(1f, 1f, 1f, _regionMapAlpha);
+		gl.glBegin(GL2.GL_QUADS);
+		gl.glTexCoord2f(0f, 1f); gl.glVertex2i(left, bottom);
+		gl.glTexCoord2f(1f, 1f); gl.glVertex2i(left + size, bottom);
+		gl.glTexCoord2f(1f, 0f); gl.glVertex2i(left + size, bottom + size);
+		gl.glTexCoord2f(0f, 0f); gl.glVertex2i(left, bottom + size);
+		gl.glEnd();
+		_regionMapTexture.disable();
+		gl.glDisable(GL2.GL_TEXTURE_2D);
+		GLState.glColor4f(gl, new GLColor(new Color(90, 190, 255)));
+		gl.glLineWidth(1f);
+		gl.glBegin(GL2.GL_LINE_LOOP);
+		gl.glVertex2i(left, bottom); gl.glVertex2i(left + size, bottom);
+		gl.glVertex2i(left + size, bottom + size); gl.glVertex2i(left, bottom + size);
+		gl.glEnd();
+
+		final GLCamera camera = GLDisplay.getInstance().getCamera();
+		final int blockX = GeoEngine.getBlockXY(camera.getGeoX());
+		final int blockY = GeoEngine.getBlockXY(camera.getGeoY());
+		final float markerX = left + (blockX / 256f) * size;
+		final float markerY = bottom + size - (blockY / 256f) * size;
+		final double direction = Math.toRadians(camera.getRotY());
+		GLState.setBlendEnabled(gl, true);
+		GLState.setBlendFunc(gl, GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+		if (_playerMarkerTexture != null) {
+			final float markerWidth = 18f;
+			final float markerHeight = 22f;
+			_playerMarkerTexture.enable();
+			_playerMarkerTexture.bind();
+			GLState.glColor4f(gl, GLColor.WHITE);
+			gl.glDisable(GL2.GL_CULL_FACE);
+			gl.glPushMatrix();
+			gl.glTranslatef(markerX, markerY, 0f);
+			gl.glRotatef((float) Math.toDegrees(direction), 0f, 0f, 1f);
+			gl.glBegin(GL2.GL_QUADS);
+			gl.glTexCoord2f(0f, 1f); gl.glVertex2f(-markerWidth / 2f, -markerHeight / 2f);
+			gl.glTexCoord2f(1f, 1f); gl.glVertex2f(markerWidth / 2f, -markerHeight / 2f);
+			gl.glTexCoord2f(1f, 0f); gl.glVertex2f(markerWidth / 2f, markerHeight / 2f);
+			gl.glTexCoord2f(0f, 0f); gl.glVertex2f(-markerWidth / 2f, markerHeight / 2f);
+			gl.glEnd();
+			gl.glPopMatrix();
+			gl.glEnable(GL2.GL_CULL_FACE);
+			_playerMarkerTexture.disable();
+		}
+		GLState.setBlendFunc(gl, GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+		GLState.glColor4f(gl, new GLColor(Color.YELLOW));
+		gl.glRasterPos2f(left + 4f, bottom - 16f);
+		_glut.glutBitmapString(GLUT.BITMAP_HELVETICA_12, name);
+	}
+
+	private final boolean _regionMapNameEquals(final String name) {
+		return name.equals(_regionMapName);
 	}
 
 	public static final class GLText {

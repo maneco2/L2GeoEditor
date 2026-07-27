@@ -24,6 +24,12 @@ import java.io.File;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import javax.media.opengl.GL;
 import javax.media.opengl.GL2;
@@ -34,11 +40,33 @@ import com.jogamp.opengl.util.texture.Texture;
 import com.jogamp.opengl.util.texture.awt.AWTTextureIO;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GLTerrain {
+	private static volatile int TEXTURE_PROGRESS;
+	private static volatile String TEXTURE_STAGE = "idle";
+	private static final ThreadPoolExecutor TEXTURE_LOADER = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+			new LinkedBlockingQueue<>(), runnable -> {
+				final Thread thread = new Thread(runnable, "TerrainTextureLoader");
+				thread.setDaemon(true);
+				return thread;
+			});
+
+	public static void shutdownTextureLoader() {
+		TEXTURE_LOADER.shutdownNow();
+		TEXTURE_LOADER.purge();
+	}
+
+	public static int getTextureProgress() {
+		return TEXTURE_PROGRESS;
+	}
+
+	public static String getTextureStage() {
+		return TEXTURE_STAGE;
+	}
+
 	static final int genTex(final GL2 gl, final int width, final int height, final ShortBuffer buf, int id) {
 		if (id == 0) {
 			final int[] temp = new int[1];
@@ -63,12 +91,18 @@ public final class GLTerrain {
 
 	private GeoRegion _region;
 	private Texture _texture;
+	private volatile Future<TextureImage> _textureLoad;
+	private volatile int _textureGeneration;
+	private volatile boolean _textureReady;
+	private volatile boolean _discardTexture;
 
 	private boolean _needUpdateTexture;
 	private boolean _needUpdateVBO;
 
 	private boolean _wireframe;
 	private boolean _enabled;
+	private boolean _streamingPreview;
+	private int _textureMaxSize;
 
 	public GLTerrain() {
 		_vboIndex = -1;
@@ -79,7 +113,7 @@ public final class GLTerrain {
 	public final void setRegion(final GeoRegion region) {
 		if (_region != region) {
 			_region = region;
-			_needUpdateTexture = true;
+			invalidateTexture(true);
 			_needUpdateVBO = true;
 		}
 	}
@@ -98,6 +132,76 @@ public final class GLTerrain {
 
 	public final void setWireframe(final boolean wireframe) {
 		_wireframe = wireframe;
+	}
+
+	/** Renders a lightweight geodata-style mesh without loading raster textures. */
+	public final void setStreamingPreview(final boolean streamingPreview) {
+		if (_streamingPreview == streamingPreview)
+			return;
+		_streamingPreview = streamingPreview;
+		invalidateTexture(!streamingPreview);
+	}
+
+	public final void setTextureMaxSize(final int textureMaxSize) {
+		if (_textureMaxSize != textureMaxSize) {
+			_textureMaxSize = Math.max(0, textureMaxSize);
+			invalidateTexture(!_streamingPreview);
+		}
+	}
+
+	private void invalidateTexture(final boolean reload) {
+		TEXTURE_PROGRESS = reload ? 1 : 0;
+		TEXTURE_STAGE = reload ? "queued" : "idle";
+		_textureGeneration++;
+		_textureReady = false;
+		_discardTexture = true;
+		_needUpdateTexture = reload;
+
+		final Future<TextureImage> textureLoad = _textureLoad;
+		_textureLoad = null;
+		if (textureLoad != null) {
+			textureLoad.cancel(true);
+			TEXTURE_LOADER.purge();
+		}
+	}
+
+	private static TextureImage loadTextureImage(final int regionX, final int regionY, final int textureMaxSize,
+			final int generation) {
+		File file = new File("./data/textures/region/" + (regionX + 10) + "_" + (regionY + 10) + ".jpg");
+		if (!file.isFile())
+			file = new File("./data/textures/region/water.jpg");
+		if (!file.isFile())
+			return new TextureImage(generation, null);
+
+		TEXTURE_PROGRESS = 20;
+		TEXTURE_STAGE = "decode RGB";
+		BufferedImage image = Util.loadImage(file);
+		if (Thread.currentThread().isInterrupted())
+			throw new CancellationException();
+		if (textureMaxSize > 0 && (image.getWidth() > textureMaxSize || image.getHeight() > textureMaxSize)) {
+			TEXTURE_PROGRESS = 50;
+			TEXTURE_STAGE = "resize RGB";
+			final double scale = Math.min((double) textureMaxSize / image.getWidth(),
+					(double) textureMaxSize / image.getHeight());
+			image = Util.scaleImage(image, Math.max(1, (int) Math.round(image.getWidth() * scale)),
+					Math.max(1, (int) Math.round(image.getHeight() * scale)), 2);
+		}
+		if (Thread.currentThread().isInterrupted())
+			throw new CancellationException();
+		TEXTURE_PROGRESS = 72;
+		TEXTURE_STAGE = "flip RGB";
+		ImageUtil.flipImageVertically(image);
+		return new TextureImage(generation, image);
+	}
+
+	private static final class TextureImage {
+		private final int _generation;
+		private final BufferedImage _image;
+
+		private TextureImage(final int generation, final BufferedImage image) {
+			_generation = generation;
+			_image = image;
+		}
 	}
 
 	public final void checkNeedUpdateVBO(final boolean blockMinHeightChanged, final boolean blockMaxHeightChanged) {
@@ -123,29 +227,48 @@ public final class GLTerrain {
 		if (_vboIndex == -1 || !_enabled || _region == null)
 			return;
 
-		if (_needUpdateTexture) {
-			_needUpdateTexture = false;
-
-			if (_texture != null)
+		if (_discardTexture) {
+			_discardTexture = false;
+			if (_texture != null) {
 				_texture.destroy(gl);
+				_texture = null;
+			}
+		}
 
+		if (_needUpdateTexture && !_streamingPreview && _textureLoad == null) {
+			_needUpdateTexture = false;
+			final int regionX = _region.getRegionX();
+			final int regionY = _region.getRegionY();
+			final int textureMaxSize = _textureMaxSize;
+			final int generation = _textureGeneration;
+			_textureLoad = TEXTURE_LOADER
+					.submit(() -> loadTextureImage(regionX, regionY, textureMaxSize, generation));
+		}
+
+		final Future<TextureImage> textureLoad = _textureLoad;
+		if (textureLoad != null && textureLoad.isDone()) {
+			_textureLoad = null;
 			try {
-				File file = new File("./data/textures/region/" + (_region.getRegionX() + 10) + "_"
-						+ (_region.getRegionY() + 10) + ".jpg");
-				if (!file.isFile())
-					file = new File("./data/textures/region/water.jpg");
-
-				if (file.isFile()) {
-					final BufferedImage img = Util.loadImage(file);
-					ImageUtil.flipImageVertically(img);
-					_texture = AWTTextureIO.newTexture(gl.getGLProfile(), img, false);
+				final TextureImage loaded = textureLoad.get();
+				if (loaded._generation == _textureGeneration && loaded._image != null && !_streamingPreview) {
+					TEXTURE_PROGRESS = 88;
+					TEXTURE_STAGE = "upload GPU";
+					_texture = AWTTextureIO.newTexture(gl.getGLProfile(), loaded._image, false);
 					_texture.enable();
 					_texture.setTexParameteri(GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_LINEAR);
 					_texture.setTexParameteri(GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_LINEAR);
+					_textureReady = true;
+					TEXTURE_PROGRESS = 100;
+					TEXTURE_STAGE = "ready";
 				}
-			} catch (final Exception e) {
+			} catch (final CancellationException e) {
+				// Expected when the active region or texture mode changes.
+			} catch (final InterruptedException e) {
+				Thread.currentThread().interrupt();
+			} catch (final ExecutionException e) {
 				_texture = null;
-				e.printStackTrace();
+				final Throwable cause = e.getCause();
+				(cause != null ? cause : e).printStackTrace();
 			}
 		}
 
@@ -154,17 +277,32 @@ public final class GLTerrain {
 			_builder.update(gl, _vboVertex, _region.getGeoBlocks(), false);
 		}
 
-		if (_texture != null)
-			_texture.bind();
+		if (!_streamingPreview && !_textureReady)
+			return;
 
-		if (_wireframe)
+		if (_streamingPreview) {
+			gl.glDisable(GL2.GL_TEXTURE_2D);
+			GLState.glColor4f(gl, new GLColor(0.05f, 0.9f, 0.15f, 1f));
+		} else if (_texture != null) {
+			gl.glActiveTexture(GL2.GL_TEXTURE0);
+			gl.glEnable(GL2.GL_TEXTURE_2D);
+			_texture.enable();
+			_texture.bind();
+			gl.glTexEnvi(GL2.GL_TEXTURE_ENV, GL2.GL_TEXTURE_ENV_MODE, GL2.GL_MODULATE);
+			GLState.glColor4f(gl, GLColor.WHITE);
+		}
+
+		if (_wireframe || _streamingPreview)
 			gl.glPolygonMode(GL.GL_FRONT_AND_BACK, GL2.GL_LINE);
 
-		gl.glEnableClientState(GL2.GL_TEXTURE_COORD_ARRAY);
+		if (!_streamingPreview)
+			gl.glEnableClientState(GL2.GL_TEXTURE_COORD_ARRAY);
 		gl.glEnableClientState(GL2.GL_VERTEX_ARRAY);
 
-		gl.glBindBuffer(GL2.GL_ARRAY_BUFFER, _vboTexture);
-		gl.glTexCoordPointer(2, GL2.GL_FLOAT, 0, 0);
+		if (!_streamingPreview) {
+			gl.glBindBuffer(GL2.GL_ARRAY_BUFFER, _vboTexture);
+			gl.glTexCoordPointer(2, GL2.GL_FLOAT, 0, 0);
+		}
 
 		gl.glBindBuffer(GL2.GL_ARRAY_BUFFER, _vboVertex);
 		gl.glVertexPointer(3, GL2.GL_SHORT, 0, 0);
@@ -172,7 +310,8 @@ public final class GLTerrain {
 		gl.glBindBuffer(GL2.GL_ELEMENT_ARRAY_BUFFER, _vboIndex);
 
 		gl.glPushMatrix();
-		GLState.glColor4f(gl, GLColor.WHITE);
+		if (!_streamingPreview)
+			GLState.glColor4f(gl, GLColor.WHITE);
 		gl.glTranslatef(GeoEngine.getGeoXY(_region.getRegionX(), 0), -0.3f,
 				GeoEngine.getGeoXY(_region.getRegionY(), 0));
 		final int scale = _builder.getDetailLevel().getScaleXZ();
@@ -184,19 +323,29 @@ public final class GLTerrain {
 		gl.glBindBuffer(GL2.GL_ARRAY_BUFFER, 0);
 
 		gl.glDisableClientState(GL2.GL_VERTEX_ARRAY);
-		gl.glDisableClientState(GL2.GL_TEXTURE_COORD_ARRAY);
+		if (!_streamingPreview)
+			gl.glDisableClientState(GL2.GL_TEXTURE_COORD_ARRAY);
 
 		gl.glPolygonMode(GL.GL_FRONT_AND_BACK, GL2.GL_FILL);
+		if (_streamingPreview) {
+			gl.glEnable(GL2.GL_TEXTURE_2D);
+			GLState.glColor4f(gl, GLColor.WHITE);
+		}
 
 		gl.glUseProgram(0);
 	}
 
 	public final void dispose(final GL2 gl) {
+		invalidateTexture(false);
+
 		if (_vboIndex == -1)
 			return;
 
-		if (_texture != null)
+		if (_texture != null) {
 			_texture.destroy(gl);
+			_texture = null;
+		}
+		_discardTexture = false;
 
 		gl.glDeleteBuffers(3, new int[] { _vboIndex, _vboVertex, _vboTexture }, 0);
 		_vboIndex = -1;

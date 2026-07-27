@@ -3,12 +3,12 @@
  * the terms of the GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option) any later
  * version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
  * details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -16,167 +16,116 @@ package com.util;
 
 import com.Config;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
- * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * Executes a batch of independent tasks and waits for its completion.
+ * @author Maneco2
+ * @version 1.0
  */
 public final class TaskExecutor {
-	private final TaskExecutionHelper[] _helper;
-	private final TaskQueue _taskQueue;
-	private final TaskCompleteListener _taskCompleteListener;
+    private final ExecutorService _executor;
+    private final int _parallelism;
+    private volatile boolean _shutdown;
 
-	private boolean _shutdown;
-	private boolean _multithreaded;
+    public TaskExecutor(final int threads) {
+        final int workerCount = Math.max(1, threads);
+        _parallelism = workerCount;
+        _executor = Executors.newFixedThreadPool(workerCount, new DaemonThreadFactory());
+    }
 
-	public TaskExecutor(int threads) {
-		_helper = new TaskExecutionHelper[threads];
-		_taskQueue = new TaskQueue();
-		_taskCompleteListener = new TaskCompleteListener();
-	}
+    /** Returns the configured worker count for diagnostics and profiling. */
+    public final int getParallelism() {
+        return _parallelism;
+    }
 
-	public final void shutdown() {
-		_shutdown = true;
-		shutdownInternal();
-	}
+    public final void shutdown() {
+        if (_shutdown) {
+            return;
+        }
+        _shutdown = true;
+        _executor.shutdownNow();
+        try {
+            _executor.awaitTermination(5L, TimeUnit.SECONDS);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
-	private final void shutdownInternal() {
-		if (_multithreaded) {
-			for (int i = _helper.length; i-- > 0;) {
-				if (_helper[i] != null) {
-					_helper[i].interrupt();
-					_helper[i] = null;
-				}
-			}
-			_multithreaded = false;
-		}
-	}
+    /** Executes the first {@code size} entries and waits until all are complete. */
+    public final void execute(final Runnable[] tasks, final int size) {
+        if (_shutdown || size <= 0) {
+            return;
+        }
 
-	/**
-	 * Waits till all tasks are done
-	 * 
-	 * @param task The array of runnable to run
-	 * @param size The number of runnable to run staring from offset 0
-	 */
-	public final void execute(final Runnable[] tasks, final int size) {
-		if (_shutdown)
-			return;
+        final int taskCount = Math.min(size, tasks.length);
+        if (!Config.USE_MULTITHREADING) {
+            for (int i = taskCount; i-- > 0;) {
+                tasks[i].run();
+            }
+            return;
+        }
 
-		if (Config.USE_MULTITHREADING) {
-			if (!_multithreaded) {
-				for (int i = _helper.length; i-- > 0;) {
-					_helper[i] = new TaskExecutionHelper(_taskQueue, _taskCompleteListener);
-					_helper[i].start();
-				}
-				_multithreaded = true;
-			}
+        final List<CallableTask> batch = new ArrayList<>(taskCount);
+        for (int i = taskCount; i-- > 0;) {
+            batch.add(new CallableTask(tasks[i]));
+        }
 
-			_taskCompleteListener.setTasksRemaining(size);
+        try {
+            _executor.invokeAll(batch);
+            for (final CallableTask task : batch) {
+                task.rethrowFailure();
+            }
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
-			synchronized (_taskQueue) {
-				_taskQueue.offer(tasks, size);
-				_taskQueue.notifyAll();
-			}
+    private static final class CallableTask implements java.util.concurrent.Callable<Void> {
+        private final Runnable _task;
+        private Throwable _failure;
 
-			_taskCompleteListener.waitForComplete();
-		} else {
-			shutdownInternal();
-			for (int i = size; i-- > 0;) {
-				tasks[i].run();
-			}
-		}
-	}
+        private CallableTask(final Runnable task) {
+            _task = task;
+        }
 
-	private static final class TaskCompleteListener {
-		private int _tasksRemaining;
+        @Override
+        public Void call() {
+            try {
+                _task.run();
+            } catch (final Throwable t) {
+                _failure = t;
+            }
+            return null;
+        }
 
-		public TaskCompleteListener() {
+        private void rethrowFailure() {
+            if (_failure == null) {
+                return;
+            }
+            if (_failure instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (_failure instanceof Error error) {
+                throw error;
+            }
+            throw new RuntimeException("Task execution failed", _failure);
+        }
+    }
 
-		}
+    private static final class DaemonThreadFactory implements ThreadFactory {
+        private int _sequence;
 
-		public final void setTasksRemaining(final int tasksRemaining) {
-			_tasksRemaining = tasksRemaining;
-		}
-
-		public final void onTasksCompleted(final int count) {
-			synchronized (this) {
-				_tasksRemaining -= count;
-				if (_tasksRemaining == 0)
-					notify();
-			}
-		}
-
-		public final void waitForComplete() {
-			try {
-				synchronized (this) {
-					while (_tasksRemaining > 0) {
-						wait();
-					}
-				}
-			} catch (final InterruptedException e) {
-
-			}
-		}
-	}
-
-	private static final class TaskExecutionHelper extends Thread {
-		private final TaskQueue _taskQueue;
-		private final TaskCompleteListener _taskCompleteListener;
-
-		public TaskExecutionHelper(final TaskQueue taskQueue, final TaskCompleteListener taskCompleteListener) {
-			_taskQueue = taskQueue;
-			_taskCompleteListener = taskCompleteListener;
-			setDaemon(true);
-		}
-
-		@Override
-		public final void run() {
-			Runnable task1;
-			Runnable task2;
-
-			try {
-				while (!Thread.interrupted()) {
-					synchronized (_taskQueue) {
-						while (_taskQueue.isEmpty()) {
-							_taskQueue.wait();
-						}
-						task1 = _taskQueue.poll();
-						task2 = _taskQueue.isEmpty() ? null : _taskQueue.poll();
-					}
-
-					try {
-						task1.run();
-						if (task2 != null)
-							task2.run();
-					} finally {
-						_taskCompleteListener.onTasksCompleted(task2 != null ? 2 : 1);
-					}
-				}
-			} catch (final InterruptedException e) {
-
-			}
-		}
-	}
-
-	private static final class TaskQueue {
-		private Runnable[] _tasks;
-		private int _size;
-
-		public TaskQueue() {
-
-		}
-
-		public final void offer(final Runnable[] tasks, final int size) {
-			_tasks = tasks;
-			_size = size;
-		}
-
-		public final Runnable poll() {
-			return _tasks[--_size];
-		}
-
-		public final boolean isEmpty() {
-			return _size == 0;
-		}
-	}
+        @Override
+        public Thread newThread(final Runnable task) {
+            final Thread thread = new Thread(task, "GeoEditor-Task-" + (++_sequence));
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
 }

@@ -22,9 +22,9 @@ import com.jogl.GLState;
 import javax.media.opengl.GL2;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class IRenderer extends GLCellRenderer {
 	public static final boolean isAvailable(final GL2 gl) {

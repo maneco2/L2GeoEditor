@@ -28,9 +28,9 @@ import com.util.Util.FastComparator;
 import javax.media.opengl.GL2;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GLCellRenderSelector {
 	public static final FastComparator<GLSubRenderSelector> GEO_BLOCK_COMPARATOR = new FastComparator<GLSubRenderSelector>() {
@@ -71,9 +71,12 @@ public final class GLCellRenderSelector {
 
 	private int _camBlockX;
 	private int _camBlockY;
+	private int _camGeoX;
+	private int _camGeoY;
 	private boolean _forceUpdateFrustum;
 	private boolean _forceUpdateGeoBlocks;
 	private boolean _freezeGrid;
+	private boolean _circularGrid;
 	private int _gridRange;
 
 	private GeoRegion _region;
@@ -105,13 +108,18 @@ public final class GLCellRenderSelector {
 		}
 
 		if (camera.positionXZChanged() || _freezeGrid != freezeGrid || _gridRange != Config.VIS_GRID_RANGE
+				|| _circularGrid != Config.CIRCULAR_GEODATA_GRID
 				|| _forceUpdateGeoBlocks) {
+			if (_circularGrid != Config.CIRCULAR_GEODATA_GRID)
+				_forceUpdateGeoBlocks = true;
 			final int geoX = Math.max(Math.min(camera.getGeoX(), _region.getGeoX(GeoEngine.GEO_REGION_SIZE - 1)),
 					_region.getGeoX(0));
 			final int geoY = Math.max(Math.min(camera.getGeoY(), _region.getGeoY(GeoEngine.GEO_REGION_SIZE - 1)),
 					_region.getGeoY(0));
 			final int camBlockX = GeoEngine.getBlockXY(geoX);
 			final int camBlockY = GeoEngine.getBlockXY(geoY);
+			_camGeoX = geoX;
+			_camGeoY = geoY;
 
 			if (camBlockX != _camBlockX || camBlockY != _camBlockY || _freezeGrid != freezeGrid
 					|| _gridRange != Config.VIS_GRID_RANGE || _forceUpdateGeoBlocks) {
@@ -163,6 +171,7 @@ public final class GLCellRenderSelector {
 
 		_freezeGrid = freezeGrid;
 		_gridRange = Config.VIS_GRID_RANGE;
+		_circularGrid = Config.CIRCULAR_GEODATA_GRID;
 
 		if (camera.positionXZChanged() || camera.positionYChanged() || camera.rotationChanged()
 				|| _forceUpdateFrustum) {
@@ -179,6 +188,11 @@ public final class GLCellRenderSelector {
 
 	public final int getElementsToRender() {
 		return _geoBlocksSize;
+	}
+
+	/** Returns the worker count used by visibility selection. */
+	public final int getSelectionParallelism() {
+		return _taskExecutor.getParallelism();
 	}
 
 	public final GLSubRenderSelector getElementToRender(final int index) {
@@ -248,6 +262,35 @@ public final class GLCellRenderSelector {
 		return true;
 	}
 
+	private final boolean isInsideCircularCellMask(final GeoCell cell) {
+		if (!Config.CIRCULAR_GEODATA_GRID)
+			return true;
+		return CellGridMask.containsCellCenter(cell.getGeoX(), cell.getGeoY(), _camGeoX, _camGeoY,
+				getCircularRadiusInCells());
+	}
+
+	public final boolean isCellInsideCircularGrid(final GeoCell cell) {
+		return isInsideCircularCellMask(cell);
+	}
+
+	private final int getCircularRadiusInCells() {
+		return Config.VIS_GRID_RANGE * GeoEngine.GEO_BLOCK_SHIFT;
+	}
+
+	private final boolean isFullCircularBlock(final GeoBlock block) {
+		if (!Config.CIRCULAR_GEODATA_GRID)
+			return false;
+		final int radius = getCircularRadiusInCells();
+		final int minX = block.getGeoX();
+		final int minY = block.getGeoY();
+		final int maxX = minX + GeoEngine.GEO_BLOCK_SHIFT - 1;
+		final int maxY = minY + GeoEngine.GEO_BLOCK_SHIFT - 1;
+		return CellGridMask.containsCellCenter(minX, minY, _camGeoX, _camGeoY, radius)
+				&& CellGridMask.containsCellCenter(minX, maxY, _camGeoX, _camGeoY, radius)
+				&& CellGridMask.containsCellCenter(maxX, minY, _camGeoX, _camGeoY, radius)
+				&& CellGridMask.containsCellCenter(maxX, maxY, _camGeoX, _camGeoY, radius);
+	}
+
 	public final class GLSubRenderSelector implements Runnable {
 		private GeoBlock _block;
 		private GeoCell[] _geoCells;
@@ -273,6 +316,10 @@ public final class GLCellRenderSelector {
 
 		public final GeoCell getElementToRender(final int index) {
 			return _geoCells[index];
+		}
+
+		public final boolean isCellInsideCircularGrid(final GeoCell cell) {
+			return GLCellRenderSelector.this.isCellInsideCircularGrid(cell);
 		}
 
 		private final void ensureCapacity(final int count) {
@@ -304,8 +351,10 @@ public final class GLCellRenderSelector {
 					if (!(GLDisplay.getInstance().getRenderer() instanceof VBOGLSLRenderer)) {
 						final GeoCell[] cells = _block.getCells();
 						ensureCapacity(cells.length);
+						final boolean fullBlock = GLCellRenderSelector.this.isFullCircularBlock(_block);
 						for (final GeoCell cell : cells) {
-							if (GLCellRenderSelector.this.isVisible(cell))
+							if (fullBlock || (GLCellRenderSelector.this.isVisible(cell)
+									&& GLCellRenderSelector.this.isInsideCircularCellMask(cell)))
 								addElementToRender(cell);
 						}
 
@@ -324,9 +373,11 @@ public final class GLCellRenderSelector {
 				if (GLCellRenderSelector.this.isVisible(_block)) {
 					final GeoCell[] cells = _block.getCells();
 					ensureCapacity(cells.length);
+					final boolean fullBlock = GLCellRenderSelector.this.isFullCircularBlock(_block);
 
 					for (final GeoCell cell : cells) {
-						if (GLCellRenderSelector.this.isVisible(cell))
+						if (fullBlock || (GLCellRenderSelector.this.isVisible(cell)
+								&& GLCellRenderSelector.this.isInsideCircularCellMask(cell)))
 							addElementToRender(cell);
 					}
 

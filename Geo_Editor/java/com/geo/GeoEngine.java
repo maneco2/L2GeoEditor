@@ -26,12 +26,15 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoEngine {
 	public static final FileFilter OFF_GEO_FILE_FILTER = new FileFilter() {
@@ -313,18 +316,22 @@ public final class GeoEngine {
 		return _instance;
 	}
 
-	private GeoRegion _activeRegion;
+	private volatile GeoRegion _activeRegion;
+	private volatile long _lastRegionDiscardMicros;
+	private volatile long _lastRegionReadMicros;
+	private final Map<RegionLoadManager.RegionKey, GeoRegion> _loadedRegions = new LinkedHashMap<>();
+	private int _windowCenterX;
+	private int _windowCenterY;
 
 	public GeoEngine() {
 	}
 
-	public final void unload() {
-		final GeoRegion region = _activeRegion;
-		if (region != null) {
+	public final synchronized void unload() {
+		if (_activeRegion != null)
 			GeoBlockSelector.getInstance().unload();
+		for (final GeoRegion region : _loadedRegions.values())
 			region.unload();
-		}
-
+		_loadedRegions.clear();
 		_activeRegion = null;
 	}
 
@@ -336,19 +343,32 @@ public final class GeoEngine {
 		if (_activeRegion != null)
 			throw new RuntimeException("Geo must be unloaded first");
 
-		try (FileInputStream fis = new FileInputStream(file); BufferedInputStream bis = new BufferedInputStream(fis)) {
-			final GeoReader reader = GeoStreamReader.wrap(bis);
-
-			if (!l2j) {
-				for (int i = 18; i-- > 0;) {
-					reader.get();
-				}
+		try {
+			final GeoRegion region = loadRegion(regionX, regionY, l2j, file);
+			synchronized (this) {
+				_activeRegion = region;
+				_loadedRegions.put(new RegionLoadManager.RegionKey(regionX, regionY), region);
+				_windowCenterX = regionX;
+				_windowCenterY = regionY;
 			}
-
-			_activeRegion = new GeoRegion(regionX, regionY, reader, l2j, file);
 		} catch (final Exception e) {
 			e.printStackTrace();
 			throw new GeoFileLoadException(file, l2j, e);
+		}
+	}
+
+	private static GeoRegion loadRegion(final int regionX, final int regionY, final boolean l2j, final File file)
+			throws Exception {
+		final long start = System.nanoTime();
+		try (FileInputStream fis = new FileInputStream(file); BufferedInputStream bis = new BufferedInputStream(fis)) {
+			final GeoReader reader = GeoStreamReader.wrap(bis);
+			if (!l2j) {
+				for (int i = 18; i-- > 0;)
+					reader.get();
+			}
+			final GeoRegion region = new GeoRegion(regionX, regionY, reader, l2j, file);
+			_instance._lastRegionReadMicros = (System.nanoTime() - start) / 1_000L;
+			return region;
 		}
 	}
 
@@ -358,8 +378,125 @@ public final class GeoEngine {
 		reloadGeo(regionX, regionY, l2j, file);
 	}
 
+	/**
+	 * Activates a cached neighbor when possible and preserves the rest of the new
+	 * 3x3 window. The previous editable center is discarded after the UI has
+	 * handled its save confirmation.
+	 */
+	public final void activateRegion(final int regionX, final int regionY) throws Exception {
+		final RegionLoadManager.RegionKey key = new RegionLoadManager.RegionKey(regionX, regionY);
+		final long discardStart = System.nanoTime();
+		final GeoRegion cached;
+		synchronized (this) {
+			cached = _loadedRegions.get(key);
+			if (_activeRegion != null && _activeRegion != cached) {
+				GeoBlockSelector.getInstance().unload();
+				// Clean centers remain useful as neighbors in the next overlapping
+				// window. Only a deliberately discarded modified center is released.
+				if (!_activeRegion.allDataEqual()) {
+					_loadedRegions.values().removeIf(region -> region == _activeRegion);
+					_activeRegion.unload();
+				}
+			}
+			_activeRegion = cached;
+		}
+		_lastRegionDiscardMicros = (System.nanoTime() - discardStart) / 1_000L;
+
+		if (cached == null) {
+			final File file = new File(Config.PATH_TO_GEO_FILES,
+					(regionX + 10) + "_" + (regionY + 10) + ".l2j");
+			if (!file.isFile())
+				throw new GeoFileNotFoundException(file, true);
+			final GeoRegion loaded = loadRegion(regionX, regionY, true, file);
+			synchronized (this) {
+				_activeRegion = loaded;
+				_loadedRegions.put(key, loaded);
+			}
+		}
+		selectRegionWindow(regionX, regionY);
+	}
+
+	/** Returns the latest time spent clearing the previous region selection/cache. */
+	public final long getLastRegionDiscardMicros() {
+		return _lastRegionDiscardMicros;
+	}
+
+	public final long getLastRegionReadMicros() {
+		return _lastRegionReadMicros;
+	}
+
 	public final GeoRegion getActiveRegion() {
 		return _activeRegion;
+	}
+
+	/** Returns whether a region is already resident and can be activated without disk I/O. */
+	public final synchronized boolean isRegionLoaded(final int regionX, final int regionY) {
+		for (final RegionLoadManager.RegionKey key : _loadedRegions.keySet())
+			if (key.x() == regionX && key.y() == regionY)
+				return true;
+		return false;
+	}
+
+	public final synchronized Map<RegionLoadManager.RegionKey, GeoRegion> getLoadedRegionsSnapshot() {
+		return Collections.unmodifiableMap(new LinkedHashMap<>(_loadedRegions));
+	}
+
+	public final synchronized void selectRegionWindow(final int regionX, final int regionY) {
+		_windowCenterX = regionX;
+		_windowCenterY = regionY;
+		final var iterator = _loadedRegions.entrySet().iterator();
+		while (iterator.hasNext()) {
+			final var entry = iterator.next();
+			final RegionLoadManager.RegionKey key = entry.getKey();
+			if (Math.abs(key.x() - regionX) > 1 || Math.abs(key.y() - regionY) > 1) {
+				if (entry.getValue() != _activeRegion)
+					entry.getValue().unload();
+				iterator.remove();
+			}
+		}
+	}
+
+	public final synchronized void selectSingleRegion(final int regionX, final int regionY) {
+		_windowCenterX = regionX;
+		_windowCenterY = regionY;
+		final var iterator = _loadedRegions.entrySet().iterator();
+		while (iterator.hasNext()) {
+			final var entry = iterator.next();
+			if (entry.getValue() != _activeRegion) {
+				entry.getValue().unload();
+				iterator.remove();
+			}
+		}
+	}
+
+	public final boolean loadNeighborRegion(final int regionX, final int regionY) {
+		final RegionLoadManager.RegionKey key = new RegionLoadManager.RegionKey(regionX, regionY);
+		synchronized (this) {
+			if (_loadedRegions.containsKey(key))
+				return true;
+			if (Math.abs(regionX - _windowCenterX) > 1 || Math.abs(regionY - _windowCenterY) > 1)
+				return false;
+		}
+
+		final File file = new File(Config.PATH_TO_GEO_FILES, (regionX + 10) + "_" + (regionY + 10) + ".l2j");
+		if (!file.isFile())
+			return false;
+		try {
+			final GeoRegion region = loadRegion(regionX, regionY, true, file);
+			synchronized (this) {
+				if (Math.abs(regionX - _windowCenterX) > 1 || Math.abs(regionY - _windowCenterY) > 1) {
+					region.unload();
+					return false;
+				}
+				final GeoRegion previous = _loadedRegions.putIfAbsent(key, region);
+				if (previous != null)
+					region.unload();
+			}
+			return true;
+		} catch (final Exception exception) {
+			exception.printStackTrace();
+			return false;
+		}
 	}
 
 	private final GeoRegion getGeoRegion(final int geoX, final int geoY) {

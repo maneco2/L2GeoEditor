@@ -26,9 +26,9 @@ import com.util.GeoWriter;
 /**
  * Flat block, 1 level, 1 height.<br>
  * 
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoBlockFlat extends GeoBlock {
 	public static final GeoBlockFlat convertFrom(final GeoBlock block) {

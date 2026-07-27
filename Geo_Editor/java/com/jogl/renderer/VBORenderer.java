@@ -28,9 +28,9 @@ import javax.media.opengl.GL2;
 import com.jogamp.common.nio.Buffers;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class VBORenderer extends GLCellRenderer {
 	public static final boolean isAvailable(final GL2 gl) {

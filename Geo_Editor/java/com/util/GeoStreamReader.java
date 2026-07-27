@@ -18,9 +18,9 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoStreamReader implements GeoReader {
 	public static final GeoStreamReader wrap(final InputStream is) {

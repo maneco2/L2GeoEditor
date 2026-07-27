@@ -39,9 +39,9 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 @SuppressWarnings("serial")
 public final class PanelDirectNswe extends JPanel implements MouseListener {

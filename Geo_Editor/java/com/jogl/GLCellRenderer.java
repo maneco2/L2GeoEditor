@@ -34,9 +34,9 @@ import com.jogamp.opengl.util.texture.Texture;
 import com.jogamp.opengl.util.texture.TextureIO;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public abstract class GLCellRenderer {
 	public static final String[] RENDERER_NAMES = { IRenderer.NAME, DLRenderer.NAME, VBORenderer.NAME,

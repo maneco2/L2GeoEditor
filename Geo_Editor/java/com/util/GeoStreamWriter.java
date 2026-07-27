@@ -18,9 +18,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoStreamWriter implements GeoWriter {
 	public static final GeoStreamWriter wrap(final OutputStream os) {

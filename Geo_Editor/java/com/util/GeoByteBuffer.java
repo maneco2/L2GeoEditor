@@ -15,9 +15,9 @@
 package com.util;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoByteBuffer implements GeoReader, GeoWriter {
 	private final byte[] _data;

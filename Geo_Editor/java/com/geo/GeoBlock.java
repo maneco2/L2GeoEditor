@@ -18,9 +18,9 @@ import com.util.GeoReader;
 import com.util.GeoWriter;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public abstract class GeoBlock implements Cloneable {
 	public static final GeoBlock[] EMPTY_ARRAY = new GeoBlock[0];

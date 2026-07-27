@@ -29,9 +29,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoRegion {
 	public static final byte getType(final GeoReader reader, final boolean l2j) {
@@ -81,6 +81,9 @@ public final class GeoRegion {
 	private final int _minGeoY;
 	private final int _maxGeoY;
 	private GeoBlock[][] _geoBlocks;
+	private volatile boolean _layerCountsDirty = true;
+	private volatile long _totalLayerCount;
+	private volatile long[] _layerCountsByType = new long[3];
 	private GeoByteBuffer[][] _geoBlocksData;
 
 	public GeoRegion(final int regionX, final int regionY, final GeoReader reader, final boolean l2j, final File file) {
@@ -150,6 +153,7 @@ public final class GeoRegion {
 
 		block.unload();
 		_geoBlocks[blockX][blockY] = convertedBlock;
+		_layerCountsDirty = true;
 	}
 
 	public final void convertBlock(final int blockX, final int blockY, final byte type) {
@@ -163,6 +167,7 @@ public final class GeoRegion {
 		reader.clear();
 		block.unload();
 		_geoBlocks[blockX][blockY] = readBlock(blockX, blockY, reader, true);
+		_layerCountsDirty = true;
 	}
 
 	public final void restoreBlock(final int blockX, final int blockY) {
@@ -175,6 +180,37 @@ public final class GeoRegion {
 
 	public final GeoBlock[][] getGeoBlocks() {
 		return _geoBlocks;
+	}
+
+	/** Returns the total number of cell layers currently held by this region. */
+	public final long getTotalLayerCount() {
+		refreshLayerCounts();
+		return _totalLayerCount;
+	}
+
+	private final void refreshLayerCounts() {
+		if (!_layerCountsDirty)
+			return;
+		long count = 0L;
+		final long[] byType = new long[3];
+		for (int blockX = 0; blockX < _geoBlocks.length; blockX++) {
+			for (int blockY = 0; blockY < _geoBlocks[blockX].length; blockY++) {
+				final GeoBlock block = _geoBlocks[blockX][blockY];
+				final long layers = block.getCells().length;
+				count += layers;
+				if (block.getType() < byType.length)
+					byType[block.getType()] += layers;
+			}
+		}
+		_totalLayerCount = count;
+		_layerCountsByType = byType;
+		_layerCountsDirty = false;
+	}
+
+	/** Returns the number of cell layers belonging to blocks of the given type. */
+	public final long getTotalLayerCount(final byte blockType) {
+		refreshLayerCounts();
+		return blockType >= 0 && blockType < _layerCountsByType.length ? _layerCountsByType[blockType] : 0L;
 	}
 
 	public final int getRegionX() {
@@ -236,6 +272,7 @@ public final class GeoRegion {
 		final int blockX = GeoEngine.getBlockXY(geoX);
 		final int blockY = GeoEngine.getBlockXY(geoY);
 		_geoBlocks[blockX][blockY] = block;
+		_layerCountsDirty = true;
 		;
 	}
 
@@ -248,7 +285,10 @@ public final class GeoRegion {
 	public final GeoCell addLayer(final int geoX, final int geoY, final short heightAndNSWE) {
 		final int blockX = GeoEngine.getBlockXY(geoX);
 		final int blockY = GeoEngine.getBlockXY(geoY);
-		return _geoBlocks[blockX][blockY].addLayer(geoX, geoY, heightAndNSWE);
+		final GeoCell added = _geoBlocks[blockX][blockY].addLayer(geoX, geoY, heightAndNSWE);
+		if (added != null)
+			_layerCountsDirty = true;
+		return added;
 	}
 
 	public final void saveTo(final OutputStream os, final boolean l2j, final DialogSave observ) throws IOException {

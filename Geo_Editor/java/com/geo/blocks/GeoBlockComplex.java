@@ -26,9 +26,9 @@ import com.util.GeoWriter;
 /**
  * Complex block, 1 level, 64 heights (each cell in block).<br>
  * 
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoBlockComplex extends GeoBlock {
 	public static final GeoBlockComplex convertFrom(final GeoBlock block) {

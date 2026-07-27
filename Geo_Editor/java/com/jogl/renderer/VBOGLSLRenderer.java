@@ -35,9 +35,9 @@ import javax.media.opengl.GL2;
 import com.jogamp.common.nio.Buffers;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class VBOGLSLRenderer extends GLCellRenderer {
 	public static final boolean isAvailable(final GL2 gl) {
@@ -50,10 +50,12 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 	private int _vboIndex;
 	private int _vboVertex;
 	private int _vboTexture;
+	private long _lastBufferUploadMicros;
 
 	private GLUniformVec4fv _cellColors;
 	private GLUniformVec2f _blockPosition;
 	private GLUniformVec1iv _blockData;
+	private GLUniformVec1iv _cellMask;
 	private GLUniformVec1iv _cellPositions;
 	private GLUniformVec1i _blockType;
 	private GLUniformVec1i _cellData;
@@ -101,6 +103,7 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		vertexBuffer.flip();
 		textureBuffer.flip();
 
+		final long uploadStart = System.nanoTime();
 		gl.glBindBuffer(GL2.GL_ELEMENT_ARRAY_BUFFER, _vboIndex);
 		gl.glBufferData(GL2.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.remaining() * Buffers.SIZEOF_SHORT, indexBuffer,
 				GL2.GL_STATIC_DRAW);
@@ -112,6 +115,7 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		gl.glBindBuffer(GL2.GL_ARRAY_BUFFER, _vboTexture);
 		gl.glBufferData(GL2.GL_ARRAY_BUFFER, textureBuffer.remaining() * Buffers.SIZEOF_FLOAT, textureBuffer,
 				GL2.GL_STATIC_DRAW);
+		_lastBufferUploadMicros = (System.nanoTime() - uploadStart) / 1_000L;
 
 		if (!initShader(gl, "./data/shader/Cell.vsh", "./data/shader/Cell.fsh"))
 			return false;
@@ -119,10 +123,15 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		_cellColors = getShader().getUniformVec4fv(gl, "cell_colors", 13);
 		_blockPosition = getShader().getUniformVec2f(gl, "block_position");
 		_blockData = getShader().getUniformVec1iv(gl, "block_data", 64);
+		_cellMask = getShader().getUniformVec1iv(gl, "cell_mask", 64);
 		_blockType = getShader().getUniformVec1i(gl, "block_type");
 		_cellData = getShader().getUniformVec1i(gl, "cell_data");
 		_cellPositions = getShader().getUniformVec1iv(gl, "cell_positions", 64);
 		return true;
+	}
+
+	public final long getLastBufferUploadMicros() {
+		return _lastBufferUploadMicros;
 	}
 
 	/**
@@ -187,15 +196,18 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 
 		case GeoEngine.GEO_BLOCK_TYPE_COMPLEX: {
 			_blockData.clear();
+			_cellMask.clear();
 			for (int x = 0, y; x < 8; x++) {
 				for (y = 0; y < 8; y++) {
 					cell = block.nGetCellByLayer(x, y, 0);
 
 					_blockData.put((FrameMain.getInstance().isSelectedGeoCell(cell) ? 12
 							: 3 + cell.getSelectionState().ordinal()) | cell.getHeightAndNSWE() << 4);
+					_cellMask.put(selector.isCellInsideCircularGrid(cell) ? 1 : 0);
 				}
 			}
 			_blockData.update(gl);
+			_cellMask.update(gl);
 			gl.glDrawElements(GL2.GL_TRIANGLES, GEOMETRY_INDICES_DATA_LENGTH * 64, GL2.GL_UNSIGNED_SHORT,
 					GEOMETRY_INDICES_DATA_LENGTH * Buffers.SIZEOF_SHORT);
 			break;

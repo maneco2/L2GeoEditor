@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="G3DEditor Windows x64" default="dist-deflate" basedir=".">
-	<property name="main" location="com.G3DEditor" />
-	<property name="src" location="java" />
-	<property name="dist" location="dist" />
+	<property name="main" location="com.GeoEditor" />
+	<property name="source.java" location="java" />
+	<property name="source.runtime" location="src" />
 	<property name="libs" location="libs" />
-	<property name="data" location="data" />
+	<property name="assets" location="${source.runtime}/assets" />
 	<property name="build" location="build" />
 	<property name="build.classes" location="${build}/classes" />
-	<property name="build.geo" location="${build}/g3deditor" />
+	<property name="build.geo" location="${build}" />
 	<property name="build.geo.libs" location="${build.geo}/libs" />
 	<property name="build.geo.data" location="${build.geo}/data" />
+	<property name="java.release" value="25" />
+	<property name="java.encoding" value="UTF-8" />
 
 	<path id="classpath">
 		<fileset dir="${libs}">
@@ -20,7 +22,12 @@
 	</path>
 
 	<target name="clean">
-		<delete dir="${build}" />
+		<delete dir="${build.classes}" />
+		<delete file="${build.geo}/G3DEditor.jar" quiet="true" />
+		<delete file="${build.geo}/GeoEditor.jar" quiet="true" />
+		<delete file="${build.geo}/G3DEditor.bat" quiet="true" />
+		<delete file="${build.geo}/GeoEditor.bat" quiet="true" />
+		<delete file="${build}/G3DEditor.zip" quiet="true" />
 	</target>
 
 	<target name="init" depends="clean">
@@ -32,14 +39,16 @@
 	</target>
 
 	<target name="compile" depends="init">
-		<javac destdir="${build.classes}" includeantruntime="false">
-			<src path="${src}" />
+		<javac destdir="${build.classes}" includeantruntime="false" release="${java.release}" encoding="${java.encoding}" debug="true" verbose="false">
+			<src path="${source.java}" />
 			<classpath refid="classpath" />
 		</javac>
 	</target>
 
+	<target name="compile-check" depends="compile" description="Compile all sources with the configured Java release." />
+
 	<target name="jar" depends="compile">
-		<jar destfile="${build.geo}/G3DEditor.jar">
+		<jar destfile="${build.geo}/GeoEditor.jar">
 			<fileset dir="${build.classes}" />
 			<manifest>
 				<attribute name="Main-Class" value="${main}" />
@@ -50,21 +59,21 @@
 
 	<target name="dist" depends="jar">
 		<copy todir="${build.geo}">
-			<fileset dir="${dist}">
+			<fileset dir="${source.runtime}">
+				<exclude name="data/**" />
 			</fileset>
 		</copy>
 		<copy todir="${build.geo.libs}">
 			<fileset dir="${libs}" />
 		</copy>
 		<copy todir="${build.geo.data}">
-			<fileset dir="${data}">
+			<fileset dir="${assets}">
 			</fileset>
 		</copy>
 	</target>
 
 	<target name="dist-deflate" depends="dist">
-		<tstamp>
-		</tstamp>
-		<zip destfile="${build}/G3DEditor.zip" basedir="${build.geo}" update="true" compress="false" />
+		<delete dir="${build.classes}" quiet="true" />
+		<delete file="${build}/G3DEditor.zip" quiet="true" />
 	</target>
 </project>

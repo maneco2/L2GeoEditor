@@ -29,9 +29,9 @@ import java.util.Comparator;
 import javax.imageio.ImageIO;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class Util {
 	public static interface FastComparator<T> {

@@ -15,6 +15,7 @@
 package com.jogl;
 
 import com.Config;
+import com.Config;
 import com.util.FastArrayList;
 
 import java.awt.AWTException;
@@ -35,11 +36,17 @@ import java.awt.image.BufferedImage;
 import javax.media.opengl.awt.GLCanvas;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class AWTInput implements MouseListener, MouseMotionListener, MouseWheelListener, KeyListener {
+	private boolean _miniMapResize;
+	private int _miniMapLastX;
+	private int _miniMapLastY;
+	private int _miniMapResizeStartX;
+	private int _miniMapResizeStartY;
+	private int _miniMapResizeStartSize;
 	private final Cursor _cursor;
 	private final FastArrayList<MouseEvent> _mouseEvents;
 
@@ -61,7 +68,6 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	private boolean _keyR;
 	private boolean _keyRToggle;
 	private boolean _keyT;
-	private boolean _keyTToggle;
 	private boolean _keyG;
 	private boolean _keyGToggle;
 	private boolean _keyF;
@@ -111,7 +117,7 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	}
 
 	public final boolean getKeyTToggle() {
-		return _keyTToggle;
+		return Config.TERRAIN_DEFAULT_ON;
 	}
 
 	public final boolean getKeyG() {
@@ -200,9 +206,7 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	 */
 	@Override
 	public final void mouseClicked(final MouseEvent e) {
-		if (e.getButton() == MouseEvent.BUTTON1) {
-			_mouseEvents.addLast(e);
-		} else if (e.getButton() == MouseEvent.BUTTON2) {
+		if (e.getButton() == MouseEvent.BUTTON2) {
 			GLDisplay.getInstance().getSelectionBox().toggleInfHeight();
 		}
 	}
@@ -212,6 +216,14 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	 */
 	@Override
 	public final void mousePressed(final MouseEvent mouseevent) {
+		if (mouseevent.getButton() == MouseEvent.BUTTON1) {
+			if (beginMiniMapResize(mouseevent)) {
+				GLDisplay.getInstance().getCanvas().requestFocusInWindow();
+				return;
+			}
+			_mouseEvents.addLast(mouseevent);
+			GLDisplay.getInstance().getCanvas().requestFocusInWindow();
+		}
 		updateMouseButton(mouseevent, true);
 	}
 
@@ -220,7 +232,28 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	 */
 	@Override
 	public final void mouseReleased(final MouseEvent e) {
+		if (e.getButton() == MouseEvent.BUTTON1 && _miniMapResize) {
+			_miniMapResize = false;
+			Config.save();
+			return;
+		}
 		updateMouseButton(e, false);
+	}
+
+	private boolean beginMiniMapResize(final MouseEvent e) {
+		final int size = Config.MINI_MAP_SIZE;
+		final int left = Config.MINI_MAP_MARGIN;
+		final int bottom = GLDisplay.getInstance().getHeight() - size - Config.MINI_MAP_MARGIN;
+		final int y = GLDisplay.getInstance().getHeight() - e.getY();
+		if (e.getX() < left + size - 18 || e.getX() > left + size || y < bottom || y > bottom + 18)
+			return false;
+		_miniMapResize = true;
+		_miniMapLastX = e.getX();
+		_miniMapLastY = e.getY();
+		_miniMapResizeStartX = e.getX();
+		_miniMapResizeStartY = e.getY();
+		_miniMapResizeStartSize = size;
+		return true;
 	}
 
 	private final void updateMouseButton(final MouseEvent e, final boolean state) {
@@ -264,7 +297,17 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	 */
 	@Override
 	public final void mouseDragged(final MouseEvent e) {
-		if (e.getButton() == MouseEvent.BUTTON1) {
+		if (_miniMapResize) {
+			final int dx = e.getX() - _miniMapResizeStartX;
+			final int dy = e.getY() - _miniMapResizeStartY;
+			Config.MINI_MAP_SIZE = Math.max(96, Math.min(320, _miniMapResizeStartSize + dx + dy));
+			_miniMapLastX = e.getX();
+			_miniMapLastY = e.getY();
+			return;
+		}
+		// MouseEvent.BUTTON1 is normally reported as 0 during MOUSE_DRAGGED.
+		// Use the tracked button state so click-and-drag selection is reliable.
+		if (_mouse1) {
 			_mouseEvents.addLast(e);
 		}
 
@@ -347,7 +390,7 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 		case KeyEvent.VK_T:
 			_keyT = state;
 			if (state)
-				_keyTToggle = !_keyTToggle;
+				Config.TERRAIN_DEFAULT_ON = !Config.TERRAIN_DEFAULT_ON;
 			break;
 
 		case KeyEvent.VK_G:
@@ -378,7 +421,6 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 		_keyR = false;
 		_keyRToggle = false;
 		_keyT = false;
-		_keyTToggle = Config.TERRAIN_DEFAULT_ON;
 		_keyG = false;
 		_keyGToggle = true;
 		_keyF = false;

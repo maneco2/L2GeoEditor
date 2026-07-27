@@ -21,9 +21,9 @@ import com.swing.FrameMain;
 import com.util.FastArrayList;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoBlockSelector {
 	private static final void setStateOf(final FastArrayList<GeoCell> cells, final SelectionState state) {

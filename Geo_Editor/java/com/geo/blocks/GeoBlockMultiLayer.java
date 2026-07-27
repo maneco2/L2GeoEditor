@@ -32,9 +32,9 @@ import java.util.Arrays;
  * MultiLayer block, x levels, 64 heights + y (each cell can have multiple
  * heights).<br>
  * 
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public final class GeoBlockMultiLayer extends GeoBlock {
 	public static final GeoBlockMultiLayer convertFrom(final GeoBlock block) {
@@ -270,6 +270,11 @@ public final class GeoBlockMultiLayer extends GeoBlock {
 			}
 		}
 		return maxLayerCount;
+	}
+
+	/** Returns the total number of layer cells held by this block. */
+	public final int getTotalLayerCount() {
+		return _cells.length;
 	}
 
 	@Override

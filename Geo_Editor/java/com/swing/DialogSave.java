@@ -33,6 +33,8 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.swing.JCheckBox;
 import javax.swing.JDialog;
@@ -40,15 +42,21 @@ import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileFilter;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 @SuppressWarnings("serial")
 public final class DialogSave extends JDialog implements ActionListener, MouseListener {
+	private static final ExecutorService SAVE_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+		final Thread thread = new Thread(runnable, "GeoEditor-RegionSave");
+		thread.setDaemon(true);
+		return thread;
+	});
 	private static final FileFilter FILE_FILTER = new FileFilter() {
 		public final boolean accept(final File file) {
 			return true;
@@ -77,6 +85,10 @@ public final class DialogSave extends JDialog implements ActionListener, MouseLi
 	private final JPanel _panelButtons;
 	private final DefaultButton _buttonOk;
 	private final DefaultButton _buttonCancel;
+
+	public static void shutdownSaveExecutor() {
+		SAVE_EXECUTOR.shutdownNow();
+	}
 
 	public DialogSave(final Frame owner, final GeoRegion region) {
 		this(owner, region, null);
@@ -257,21 +269,19 @@ public final class DialogSave extends JDialog implements ActionListener, MouseLi
 				_buttonCancel.setEnabled(false);
 				_progressRegion.setEnabled(true);
 
-				new Thread() {
-					@Override
-					public final void run() {
-						try (FileOutputStream fos = new FileOutputStream(file);
-								final BufferedOutputStream bos = new BufferedOutputStream(fos)) {
-							_region.saveTo(bos, _checkL2j.isSelected(), DialogSave.this);
-							bos.flush();
-						} catch (final IOException e1) {
-							JOptionPane.showMessageDialog(FrameMain.getInstance(),
-									"Failed storing " + file + "\n" + e1.getMessage(), "Error",
-									JOptionPane.INFORMATION_MESSAGE);
-						}
-						onSaveComplete();
+				final boolean l2j = _checkL2j.isSelected();
+				SAVE_EXECUTOR.execute(() -> {
+					Exception failure = null;
+					try (FileOutputStream fos = new FileOutputStream(file);
+							final BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+						_region.saveTo(bos, l2j, DialogSave.this);
+						bos.flush();
+					} catch (final IOException e1) {
+						failure = e1;
 					}
-				}.start();
+					final Exception result = failure;
+					SwingUtilities.invokeLater(() -> onSaveFinished(file, result));
+				});
 			}
 		} else if (e.getSource() == _buttonCancel) {
 			setVisible(false);
@@ -312,6 +322,15 @@ public final class DialogSave extends JDialog implements ActionListener, MouseLi
 		_progressRegion.setEnabled(false);
 	}
 
+	private void onSaveFinished(final File file, final Exception failure) {
+		if (failure != null) {
+			JOptionPane.showMessageDialog(FrameMain.getInstance(),
+					"Failed storing " + file + "\n" + failure.getMessage(), "Error",
+					JOptionPane.INFORMATION_MESSAGE);
+		}
+		onSaveComplete();
+	}
+
 	private final int precent(final JProgressBar bar) {
 		return (int) (bar.getPercentComplete() * 100D);
 	}
@@ -322,6 +341,10 @@ public final class DialogSave extends JDialog implements ActionListener, MouseLi
 	}
 
 	public final void updateProgressRegion(final int progress, final String blockName) {
+		if (!SwingUtilities.isEventDispatchThread()) {
+			SwingUtilities.invokeLater(() -> updateProgressRegion(progress, blockName));
+			return;
+		}
 		if (!checkNeedUpdate(_progressRegion, progress))
 			return;
 

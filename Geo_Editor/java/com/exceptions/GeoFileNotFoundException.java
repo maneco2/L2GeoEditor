@@ -17,9 +17,9 @@ package com.exceptions;
 import java.io.File;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J project source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 @SuppressWarnings("serial")
 public final class GeoFileNotFoundException extends RuntimeException {

@@ -17,9 +17,9 @@ package com.geo;
 import com.entity.SelectionState;
 
 /**
- * <a href="http://l2j-server.com/">L2jServer</a>
+ * L2J source.
  * 
- * @author Forsaiken aka Patrick, e-mail: patrickbiesenbach@yahoo.de
+ * @author Forsaiken aka Patrick
  */
 public abstract class GeoCell {
 	public static final GeoCell[] EMPTY_ARRAY = new GeoCell[0];
