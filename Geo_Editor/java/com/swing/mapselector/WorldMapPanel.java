@@ -19,6 +19,7 @@ import java.awt.Graphics;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
@@ -65,27 +66,38 @@ public final class WorldMapPanel extends JPanel {
     }
 
     private Point cellAt(final Point point) {
-        if (point.x < 0 || point.y < 0 || point.x >= getWidth() || point.y >= getHeight()) return null;
-        return new Point(point.x * columns / Math.max(1, getWidth()), point.y * rows / Math.max(1, getHeight()));
+        final Rectangle bounds = calculateMapBounds(getWidth(), getHeight(), columns, rows);
+        if (!bounds.contains(point)) return null;
+        return new Point((point.x - bounds.x) * columns / Math.max(1, bounds.width),
+                (point.y - bounds.y) * rows / Math.max(1, bounds.height));
     }
 
     @Override protected void paintComponent(final Graphics graphics) {
         super.paintComponent(graphics);
-        graphics.drawImage(image, 0, 0, getWidth(), getHeight(), null);
-        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, Math.max(9, getWidth() / 95)));
+        final Rectangle bounds = calculateMapBounds(getWidth(), getHeight(), columns, rows);
+        graphics.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height, null);
+        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, Math.max(9, bounds.width / 95)));
         for (int y = 0; y < rows; y++) for (int x = 0; x < columns; x++) {
-            final int left = x * getWidth() / columns;
-            final int top = y * getHeight() / rows;
+            final int left = bounds.x + x * bounds.width / columns;
+            final int top = bounds.y + y * bounds.height / rows;
             graphics.setColor(new Color(255, 255, 255, 210));
             graphics.drawString((x + 10) + "_" + (y + 10), left + 3, top + 14);
         }
         if (selectedX >= 0) {
-            final int x = selectedX * getWidth() / columns;
-            final int y = selectedY * getHeight() / rows;
-            final int w = Math.max(1, getWidth() / columns);
-            final int h = Math.max(1, getHeight() / rows);
+            final int x = bounds.x + selectedX * bounds.width / columns;
+            final int y = bounds.y + selectedY * bounds.height / rows;
+            final int w = Math.max(1, bounds.width / columns);
+            final int h = Math.max(1, bounds.height / rows);
             graphics.setColor(Color.RED);
             graphics.drawRect(x, y, w - 1, h - 1);
         }
+    }
+
+    public static Rectangle calculateMapBounds(final int width, final int height, final int columns, final int rows) {
+        if (width <= 0 || height <= 0 || columns <= 0 || rows <= 0) return new Rectangle();
+        final double scale = Math.min((double) width / columns, (double) height / rows);
+        final int mapWidth = Math.max(1, (int) Math.floor(columns * scale));
+        final int mapHeight = Math.max(1, (int) Math.floor(rows * scale));
+        return new Rectangle((width - mapWidth) / 2, (height - mapHeight) / 2, mapWidth, mapHeight);
     }
 }

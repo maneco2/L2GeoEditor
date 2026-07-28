@@ -40,10 +40,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "javac failed with exit code $LASTEXITCODE."
 }
 
-$legacyJar = Join-Path $build 'G3DEditor.jar'
-if (Test-Path -LiteralPath $legacyJar) {
-    Remove-Item -LiteralPath $legacyJar -Force
-}
 $jarFile = Join-Path $build 'GeoEditor.jar'
 if (Test-Path -LiteralPath $jarFile) {
     try {
@@ -60,18 +56,6 @@ if ($LASTEXITCODE -ne 0) {
 
 Remove-Item -LiteralPath $classes -Recurse -Force
 
-$legacyLauncher = Join-Path $build 'G3DEditor.bat'
-if (Test-Path -LiteralPath $legacyLauncher) {
-    Remove-Item -LiteralPath $legacyLauncher -Force
-}
-Copy-Item -LiteralPath (Join-Path $sourceRoot 'GeoEditor.bat') -Destination (Join-Path $build 'GeoEditor.bat') -Force
-$legacyConfig = Join-Path $build 'G3DEditor.ini'
-$currentConfig = Join-Path $build 'GeoEditor.ini'
-if ((Test-Path -LiteralPath $legacyConfig) -and -not (Test-Path -LiteralPath $currentConfig)) {
-    Move-Item -LiteralPath $legacyConfig -Destination $currentConfig
-} elseif (Test-Path -LiteralPath $legacyConfig) {
-    Remove-Item -LiteralPath $legacyConfig -Force
-}
 Copy-Item -LiteralPath $libs -Destination $build -Recurse -Force
 New-Item -ItemType Directory -Path $assets -Force | Out-Null
 $buildData = Join-Path $build 'data'
@@ -88,11 +72,6 @@ Get-ChildItem -LiteralPath $buildData -Force | Where-Object {
 }
 Get-ChildItem -LiteralPath $assets -Force | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $buildData -Recurse -Force
-}
-
-$oldZip = Join-Path $build 'G3DEditor.zip'
-if (Test-Path -LiteralPath $oldZip) {
-    Remove-Item -LiteralPath $oldZip -Force
 }
 
 Write-Host 'Build completed without ZIP packaging.' -ForegroundColor Green

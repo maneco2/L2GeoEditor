@@ -38,33 +38,34 @@ The project focuses on predictable editing, responsive navigation and compatibil
 - OpenJDK 25 available through `JAVA_HOME` or `PATH`.
 - PowerShell 5.1 or newer.
 - An OpenGL-compatible graphics driver.
+- Launch4j 3.50 extracted locally to `Geo_Editor/tools/launch4j` when generating the portable EXE.
 
 JOGL and GlueGen dependencies required by the editor are provided in `Geo_Editor/libs`.
+The local Launch4j toolchain is intentionally ignored by Git and is not part of the application distribution.
 
 ## Build
 
-Run from `Geo_Editor`:
+Generate the portable Windows executable from `Geo_Editor`:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\build-fast.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\package-exe.ps1
 ```
 
 The build generates:
 
 ```text
-Geo_Editor/build/GeoEditor.jar
-Geo_Editor/build/GeoEditor.bat
+Geo_Editor/build/GeoEditor.exe
 ```
 
-Runtime resources are copied from `src/assets` to `build/data`. Existing files under `build/data/geodata` are preserved.
+Application code is bundled into `GeoEditor.exe`. Runtime libraries, configuration and data remain external. Existing files under `build/data/geodata` are always preserved.
 
 ## Run
 
-After building:
+After packaging:
 
 ```powershell
 cd .\build
-.\GeoEditor.bat
+.\GeoEditor.exe
 ```
 
 The runtime geodata directory is:
@@ -96,11 +97,9 @@ The suite covers:
 Geo_Editor/
 ├── java/          Java source code
 ├── tests/         Deterministic Java tests
-├── src/
-│   ├── assets/    Shaders, icons and terrain textures
-│   └── GeoEditor.bat
+├── src/assets/    Shaders, icons and terrain textures
 ├── libs/          JOGL, GlueGen and native libraries
-├── tools/         Build, test and inspection scripts
+├── tools/         Build, test and packaging scripts
 └── build.xml      Ant build definition
 ```
 
@@ -111,12 +110,11 @@ Geo_Editor/
 - Modified regions retain the confirmation flow before switching.
 - Circular grid masking never changes neighboring region data.
 
-Keep backups of production geodata before editing or converting blocks.
-
 ## License
 
 GeoEditor is distributed under the terms of the GNU General Public License, version 3 or any later version. See [LICENSE.md](LICENSE.md).
 
 ## Credits
 
-GeoEditor preserves the original authorship present in the source files. New and substantially reworked files identify `Maneco2` where applicable.
+Original author: **Forsaiken (Patrick)**.
+Maintained and modernized by **Maneco2**, with thanks for the original work.

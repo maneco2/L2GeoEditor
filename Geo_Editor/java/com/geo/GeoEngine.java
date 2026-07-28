@@ -486,7 +486,7 @@ public final class GeoEngine {
 		return CompletableFuture.allOf(completions);
 	}
 
-	public final void selectSingleRegion(final int regionX, final int regionY) {
+	public final CompletableFuture<Void> selectSingleRegion(final int regionX, final int regionY) {
 		final java.util.ArrayList<GeoRegion> discarded = new java.util.ArrayList<>();
 		synchronized (this) {
 			_windowCenterX = regionX;
@@ -501,8 +501,11 @@ public final class GeoEngine {
 				}
 			}
 		}
+		final CompletableFuture<?>[] completions = new CompletableFuture<?>[discarded.size()];
+		int index = 0;
 		for (final GeoRegion region : discarded)
-			queueRegionDiscard(region);
+			completions[index++] = queueRegionDiscard(region);
+		return CompletableFuture.allOf(completions);
 	}
 
 	private CompletableFuture<Void> queueRegionDiscard(final GeoRegion region) {

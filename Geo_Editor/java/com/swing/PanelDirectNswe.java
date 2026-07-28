@@ -107,6 +107,7 @@ public final class PanelDirectNswe extends JPanel implements MouseListener {
 		_iconNswe = new ImageIcon();
 		_iconNswe.setImage(_imageNswe);
 		_labelNswe = new JLabel(_iconNswe);
+		_labelNswe.setToolTipText("Click a direction to toggle it for the selected cells.");
 		_labelNswe.addMouseListener(this);
 
 		_nswe = -1;
@@ -140,20 +141,24 @@ public final class PanelDirectNswe extends JPanel implements MouseListener {
 			throw new IllegalArgumentException("Illegal NSWE: " + nswe);
 
 		_nswe = (byte) nswe;
-		final Graphics2D g = (Graphics2D) _imageNswe.getGraphics();
-
-		g.setBackground(new Color(0, 0, 0, 0));
-		g.clearRect(0, 0, _imageNswe.getWidth(), _imageNswe.getHeight());
-		if (nswe != -1) {
-			final int row = _nswe / 4;
-			final int col = _nswe % 4;
-			final int width = _imageNswes.getWidth(null) / 4;
-			final int height = _imageNswes.getHeight(null) / 4;
-			final int sx1 = width * row;
-			final int sy1 = height * col;
-			final int sx2 = sx1 + width;
-			final int sy2 = sy1 + height;
-			g.drawImage(_imageNswes, 0, 0, _imageNswe.getWidth(), _imageNswe.getHeight(), sx1, sy1, sx2, sy2, null);
+		final Graphics2D graphics = _imageNswe.createGraphics();
+		try {
+			graphics.setBackground(new Color(0, 0, 0, 0));
+			graphics.clearRect(0, 0, _imageNswe.getWidth(), _imageNswe.getHeight());
+			if (nswe != -1) {
+				final int row = _nswe / 4;
+				final int col = _nswe % 4;
+				final int width = _imageNswes.getWidth(null) / 4;
+				final int height = _imageNswes.getHeight(null) / 4;
+				final int sx1 = width * row;
+				final int sy1 = height * col;
+				final int sx2 = sx1 + width;
+				final int sy2 = sy1 + height;
+				graphics.drawImage(_imageNswes, 0, 0, _imageNswe.getWidth(), _imageNswe.getHeight(),
+						sx1, sy1, sx2, sy2, null);
+			}
+		} finally {
+			graphics.dispose();
 		}
 		_labelNswe.repaint();
 	}

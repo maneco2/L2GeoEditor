@@ -23,6 +23,12 @@ public final class RegionStreamingPolicyTest {
 		check(RegionStreamingPolicy.shouldLoadNeighbors(true, true), "both enabled");
 		check(!RegionStreamingPolicy.shouldTransitionRegion(false), "auxiliary must not transition");
 		check(RegionStreamingPolicy.shouldTransitionRegion(true), "full map transitions");
+		check(RegionStreamingPolicy.shouldReuseWindow(12, 12, 3, 12, 12, 3),
+				"same resident window is reused");
+		check(!RegionStreamingPolicy.shouldReuseWindow(12, 12, 3, 12, 12, 4),
+				"neighbor radius change rebuilds");
+		check(!RegionStreamingPolicy.shouldReuseWindow(12, 12, 3, 13, 12, 3),
+				"center change rebuilds");
 		System.out.println("RegionStreamingPolicyTest OK");
 	}
 

@@ -27,7 +27,6 @@ import com.jogl.GLTerrain;
 import com.swing.defaults.DefaultButton;
 import com.swing.defaults.DefaultLabel;
 import com.swing.mapselector.MapSelectorDialog;
-import com.util.MemoryReclaimer;
 import com.util.Util;
 
 import java.awt.Dimension;
@@ -35,6 +34,8 @@ import java.awt.Component;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Image;
+import java.awt.Taskbar;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
@@ -43,6 +44,8 @@ import java.awt.event.WindowStateListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.concurrent.CompletableFuture;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.swing.ImageIcon;
 import javax.swing.BorderFactory;
@@ -88,6 +91,14 @@ public final class FrameMain extends JFrame implements ActionListener {
 	private static final ImageIcon loadToolbarIcon(final String fileName) {
 		final BufferedImage image = Util.loadImage("./data/icon/" + fileName);
 		return new ImageIcon(Util.scaleImage(image, 32, 32, 2));
+	}
+
+	private static final List<Image> loadApplicationIcons() {
+		final BufferedImage source = Util.loadImage("./data/icon/geoeditor.png");
+		final List<Image> icons = new ArrayList<>();
+		for (final int size : new int[] { 16, 20, 24, 32, 40, 48, 64, 128, 256 })
+			icons.add(Util.scaleImage(source, size, size, 2));
+		return icons;
 	}
 
 	private final JPanel _panelRight;
@@ -161,7 +172,10 @@ public final class FrameMain extends JFrame implements ActionListener {
 				saveWindowState();
 			}
 		});
-		setIconImage(Util.loadImage("./data/icon/l2.jpg"));
+		final List<Image> applicationIcons = loadApplicationIcons();
+		setIconImages(applicationIcons);
+		if (Taskbar.isTaskbarSupported() && Taskbar.getTaskbar().isSupported(Taskbar.Feature.ICON_IMAGE))
+			Taskbar.getTaskbar().setIconImage(applicationIcons.get(applicationIcons.size() - 1));
 
 		_panelRight = new JPanel();
 		_panelNswe = new PanelNswe();
@@ -225,6 +239,12 @@ public final class FrameMain extends JFrame implements ActionListener {
 		if (Config.WINDOW_MAXIMIZED)
 			setExtendedState(getExtendedState() | JFrame.MAXIMIZED_BOTH);
 		_maximizedState = Config.WINDOW_MAXIMIZED;
+	}
+
+	public final void showRestored() {
+		final int targetState = Config.WINDOW_MAXIMIZED ? JFrame.MAXIMIZED_BOTH : JFrame.NORMAL;
+		setExtendedState(targetState);
+		setVisible(true);
 	}
 
 	private void saveWindowState() {
@@ -534,27 +554,20 @@ public final class FrameMain extends JFrame implements ActionListener {
 
 	/** Updates the bounded streaming window without replacing the active region renderer. */
 	private final void updateRegionLoadWindow(final int regionX, final int regionY) {
-		final int previousNeighborCount = RegionWindowPlan.neighborCountForRadius(_streamingRadius);
 		if (!RegionStreamingPolicy.shouldLoadNeighbors(Config.FULL_MAP, Config.AUXILIARY_TERRAINS)) {
-			GeoEngine.getInstance().selectSingleRegion(regionX, regionY);
-			MemoryReclaimer.reclaimAfterWindowChangeAsync(previousNeighborCount, 0);
-			_regionLoadManager.selectSingleCenter(regionX, regionY);
-			_streamingCenterX = regionX;
-			_streamingCenterY = regionY;
-			_streamingRadius = 0;
+			selectSingleRegionWindow(regionX, regionY);
 			return;
 		}
 		final int radius = RegionWindowPlan.radiusForNeighborCount(Config.MAX_NEIGHBOR_TEXTURES);
-		final int nextNeighborCount = RegionWindowPlan.neighborCountForRadius(radius);
 		if (radius == 0) {
-			GeoEngine.getInstance().selectSingleRegion(regionX, regionY);
-			MemoryReclaimer.reclaimAfterWindowChangeAsync(previousNeighborCount, 0);
-			_regionLoadManager.selectSingleCenter(regionX, regionY);
-			_streamingCenterX = regionX;
-			_streamingCenterY = regionY;
-			_streamingRadius = 0;
+			selectSingleRegionWindow(regionX, regionY);
 			return;
 		}
+		if (RegionStreamingPolicy.shouldReuseWindow(_streamingCenterX, _streamingCenterY, _streamingRadius,
+				regionX, regionY, radius))
+			// Full Map changes navigation only. Reuse the resident auxiliary window
+			// instead of discarding and reading the same geodata again.
+			return;
 		_streamingRebuildPending = true;
 		_streamingCenterX = regionX;
 		_streamingCenterY = regionY;
@@ -564,12 +577,6 @@ public final class FrameMain extends JFrame implements ActionListener {
 		_neighborLoadingOverlay.start(RegionWindowPlan.neighborCountForRadius(radius), "Releasing previous regions");
 		GLDisplay.getInstance().getInput().setEnabled(false);
 		final CompletableFuture<Void> rebuild = GeoEngine.getInstance().resetRegionWindow(regionX, regionY, radius)
-				.thenCompose(ignored -> {
-					if (MemoryReclaimer.isCollectionRecommended())
-						_neighborLoadingOverlay.updateProgress(0,
-								RegionWindowPlan.neighborCountForRadius(radius), "Reclaiming previous maps");
-					return MemoryReclaimer.reclaimAfterWindowChangeAsync(previousNeighborCount, nextNeighborCount);
-				})
 				.thenCompose(ignored -> {
 					_regionLoadManager.selectCenter(regionX, regionY, radius);
 					_regionLoadManager.mark(new RegionLoadManager.RegionKey(regionX, regionY),
@@ -584,6 +591,31 @@ public final class FrameMain extends JFrame implements ActionListener {
 					return loaded;
 				}));
 		rebuild.whenComplete((ignored, exception) -> {
+			if (exception != null)
+				exception.printStackTrace();
+			_neighborLoadingOverlay.finish(() -> {
+				_streamingRebuildPending = false;
+				GLDisplay.getInstance().getInput().setEnabled(true);
+				GLDisplay.getInstance().requestFocus();
+			});
+		});
+	}
+
+	private void selectSingleRegionWindow(final int regionX, final int regionY) {
+		_regionLoadManager.selectSingleCenter(regionX, regionY);
+		_streamingCenterX = regionX;
+		_streamingCenterY = regionY;
+		_streamingRadius = 0;
+		final int discardCount = Math.max(0, GeoEngine.getInstance().getLoadedRegionsSnapshot().size() - 1);
+		if (discardCount == 0) {
+			GeoEngine.getInstance().selectSingleRegion(regionX, regionY);
+			return;
+		}
+		_streamingRebuildPending = true;
+		_neighborLoadingOverlay.start(discardCount, "Releasing auxiliary regions");
+		GLDisplay.getInstance().getInput().setEnabled(false);
+		final CompletableFuture<Void> cleanup = GeoEngine.getInstance().selectSingleRegion(regionX, regionY);
+		cleanup.whenComplete((ignored, exception) -> {
 			if (exception != null)
 				exception.printStackTrace();
 			_neighborLoadingOverlay.finish(() -> {

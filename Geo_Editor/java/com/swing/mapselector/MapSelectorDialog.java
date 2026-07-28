@@ -17,6 +17,9 @@ package com.swing.mapselector;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Frame;
+import java.awt.Dimension;
+import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
@@ -33,6 +36,9 @@ import javax.swing.SwingConstants;
 import javax.swing.KeyStroke;
 import javax.swing.WindowConstants;
 import javax.swing.JTextField;
+import javax.swing.Timer;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import com.Config;
 import com.geo.GeoEngine;
 import com.util.Util;
@@ -61,10 +67,22 @@ public final class MapSelectorDialog extends JDialog {
     private final JLabel availabilityLabel = new JLabel(" ");
     private final RegionOpenListener listener;
     private RegionMapPanel regionView;
+    private boolean adjustingSquareSize;
+    private int squareSize;
+    private final Timer saveSizeTimer = new Timer(300, event -> {
+        Config.MAP_SELECTOR_WIDTH = squareSize;
+        Config.MAP_SELECTOR_HEIGHT = squareSize;
+        Config.save();
+    });
+    private final Timer regionUpdateTimer = new Timer(80, event -> updateFromRegionFields());
+    private final Timer geoUpdateTimer = new Timer(80, event -> updateFromGeoFields());
 
     public MapSelectorDialog(final Frame owner, final RegionOpenListener listener) {
         super(owner, "Select Map", true);
         this.listener = listener;
+        saveSizeTimer.setRepeats(false);
+        regionUpdateTimer.setRepeats(false);
+        geoUpdateTimer.setRepeats(false);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         final BufferedImage image = Util.scaleImage(Util.loadImage("./data/icon/map.jpg"), 629, 592, 2);
         worldMap = new WorldMapPanel(image, 17, 16, this::showRegion);
@@ -84,7 +102,9 @@ public final class MapSelectorDialog extends JDialog {
         cards.add(worldMap, "world");
         add(cards, BorderLayout.CENTER); add(buttons, BorderLayout.SOUTH);
         regionXField.setToolTipText("Region X (10-26)"); regionYField.setToolTipText("Region Y (10-25)");
-        geoXField.setEditable(false); geoYField.setEditable(false); worldXField.setEditable(false); worldYField.setEditable(false);
+        geoXField.setToolTipText("Geo X coordinate");
+        geoYField.setToolTipText("Geo Y coordinate");
+        worldXField.setEditable(false); worldYField.setEditable(false);
         final JPanel coordinates = new JPanel();
         coordinates.setBorder(BorderFactory.createTitledBorder("Selected Location"));
         coordinates.add(new JLabel("Region X:")); coordinates.add(regionXField);
@@ -94,8 +114,10 @@ public final class MapSelectorDialog extends JDialog {
         coordinates.add(new JLabel("World X:")); coordinates.add(worldXField);
         coordinates.add(new JLabel("World Y:")); coordinates.add(worldYField);
         add(coordinates, BorderLayout.NORTH);
-        regionXField.addActionListener(event -> updateFromFields());
-        regionYField.addActionListener(event -> updateFromFields());
+        addLiveUpdate(regionXField, regionUpdateTimer);
+        addLiveUpdate(regionYField, regionUpdateTimer);
+        addLiveUpdate(geoXField, geoUpdateTimer);
+        addLiveUpdate(geoYField, geoUpdateTimer);
         getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "close-selector");
         getRootPane().getActionMap().put("close-selector", new AbstractAction() {
             public void actionPerformed(final ActionEvent event) {
@@ -106,12 +128,31 @@ public final class MapSelectorDialog extends JDialog {
                 } else setVisible(false);
             }
         });
-        setSize(Config.MAP_SELECTOR_WIDTH, Config.MAP_SELECTOR_HEIGHT); setLocationRelativeTo(owner);
+        final Rectangle screen = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        final int maximumSize = Math.max(640, Math.min(screen.width, screen.height));
+        squareSize = clampSquareSize(Math.max(Config.MAP_SELECTOR_WIDTH, Config.MAP_SELECTOR_HEIGHT), 640, maximumSize);
+        setMinimumSize(new Dimension(640, 640));
+        setSize(squareSize, squareSize); setLocationRelativeTo(owner);
         addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override public void componentResized(java.awt.event.ComponentEvent event) {
-                Config.MAP_SELECTOR_WIDTH = getWidth(); Config.MAP_SELECTOR_HEIGHT = getHeight(); Config.save();
+                if (adjustingSquareSize) return;
+                final int widthDelta = Math.abs(getWidth() - squareSize);
+                final int heightDelta = Math.abs(getHeight() - squareSize);
+                final int requestedSize = widthDelta >= heightDelta ? getWidth() : getHeight();
+                final int normalizedSize = clampSquareSize(requestedSize, 640, maximumSize);
+                squareSize = normalizedSize;
+                if (getWidth() != normalizedSize || getHeight() != normalizedSize) {
+                    adjustingSquareSize = true;
+                    setSize(normalizedSize, normalizedSize);
+                    adjustingSquareSize = false;
+                }
+                saveSizeTimer.restart();
             }
         });
+    }
+
+    public static int clampSquareSize(final int requestedSize, final int minimumSize, final int maximumSize) {
+        return Math.max(minimumSize, Math.min(maximumSize, requestedSize));
     }
 
     private void showRegion(final int regionX, final int regionY) {
@@ -169,7 +210,19 @@ public final class MapSelectorDialog extends JDialog {
         setVisible(true);
     }
 
-    private void updateFromFields() {
+    private void addLiveUpdate(final JTextField field, final Timer updateTimer) {
+        field.getDocument().addDocumentListener(new DocumentListener() {
+            private void scheduleUpdate() {
+                if (!updatingFields)
+                    updateTimer.restart();
+            }
+            @Override public void insertUpdate(final DocumentEvent event) { scheduleUpdate(); }
+            @Override public void removeUpdate(final DocumentEvent event) { scheduleUpdate(); }
+            @Override public void changedUpdate(final DocumentEvent event) { scheduleUpdate(); }
+        });
+    }
+
+    private void updateFromRegionFields() {
         if (updatingFields) return;
         try {
             final int x = Integer.parseInt(regionXField.getText()) - 10;
@@ -178,12 +231,36 @@ public final class MapSelectorDialog extends JDialog {
         } catch (NumberFormatException ignored) { }
     }
 
+    private void updateFromGeoFields() {
+        if (updatingFields) return;
+        try {
+            final int geoX = Integer.parseInt(geoXField.getText());
+            final int geoY = Integer.parseInt(geoYField.getText());
+            final int regionX = GeoEngine.getRegionXY(geoX);
+            final int regionY = GeoEngine.getRegionXY(geoY);
+            if (regionX < 0 || regionX >= 17 || regionY < 0 || regionY >= 16)
+                return;
+            showRegion(regionX, regionY);
+            applyGeoSelection(regionX, regionY, geoX, geoY);
+        } catch (NumberFormatException ignored) { }
+    }
+
     private void updateGeoSelection(final int regionX, final int regionY, final int cellX, final int cellY) {
         final int geoX = com.geo.GeoEngine.getGeoXY(regionX, cellX);
         final int geoY = com.geo.GeoEngine.getGeoXY(regionY, cellY);
+        applyGeoSelection(regionX, regionY, geoX, geoY);
+    }
+
+    private void applyGeoSelection(final int regionX, final int regionY, final int geoX, final int geoY) {
         selectedGeoX = geoX; selectedGeoY = geoY;
+        if (regionView != null)
+            regionView.setMarkerAtCell(GeoEngine.getBlockXY(geoX), GeoEngine.getBlockXY(geoY));
+        updatingFields = true;
+        regionXField.setText(String.valueOf(regionX + 10));
+        regionYField.setText(String.valueOf(regionY + 10));
         geoXField.setText(String.valueOf(geoX)); geoYField.setText(String.valueOf(geoY));
         worldXField.setText(String.valueOf(com.geo.GeoEngine.getWorldX(geoX)));
         worldYField.setText(String.valueOf(com.geo.GeoEngine.getWorldY(geoY)));
+        updatingFields = false;
     }
 }

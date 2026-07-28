@@ -21,6 +21,7 @@ import com.util.FastArrayList;
 
 import java.awt.AWTException;
 import java.awt.Cursor;
+import java.awt.Rectangle;
 import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.Robot;
@@ -258,9 +259,11 @@ public final class AWTInput implements MouseListener, MouseMotionListener, Mouse
 	}
 
 	private boolean beginMiniMapResize(final MouseEvent e) {
-		final int size = Config.MINI_MAP_SIZE;
-		final int left = Config.MINI_MAP_MARGIN;
-		final int bottom = GLDisplay.getInstance().getHeight() - size - Config.MINI_MAP_MARGIN;
+		final Rectangle bounds = MiniMapLayout.calculateBounds(GLDisplay.getInstance().getWidth(),
+				GLDisplay.getInstance().getHeight(), Config.MINI_MAP_SIZE, Config.MINI_MAP_MARGIN);
+		final int size = bounds.width;
+		final int left = bounds.x;
+		final int bottom = bounds.y;
 		final int y = GLDisplay.getInstance().getHeight() - e.getY();
 		if (e.getX() < left + size - 18 || e.getX() > left + size || y < bottom || y > bottom + 18)
 			return false;

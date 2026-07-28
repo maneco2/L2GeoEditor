@@ -359,15 +359,19 @@ public final class GLTerrain {
 
 	public final void dispose(final GL2 gl) {
 		invalidateTexture(false);
-
-		if (_vboIndex == -1)
-			return;
-
 		if (_texture != null) {
 			_texture.destroy(gl);
 			_texture = null;
 		}
 		_discardTexture = false;
+		_region = null;
+		_enabled = false;
+		_needUpdateVBO = false;
+		_lastVboPreparationMicros = 0L;
+		_lastVboUploadMicros = 0L;
+
+		if (_vboIndex == -1)
+			return;
 
 		gl.glDeleteBuffers(3, new int[] { _vboIndex, _vboVertex, _vboTexture }, 0);
 		_vboIndex = -1;
@@ -567,6 +571,8 @@ public final class GLTerrain {
 	}
 
 	public static final class TerrainBuilderXDetail extends TerrainBuilder {
+		private short[] _sampledHeights = new short[0];
+
 		public TerrainBuilderXDetail(final TerrainDetailLevel detailLevel) {
 			super(detailLevel);
 		}
@@ -580,65 +586,52 @@ public final class GLTerrain {
 			final int factor = getDetailLevel().getFactor();
 			final int cells = GeoEngine.GEO_BLOCK_SHIFT / factor;
 			final int xzUp = GeoEngine.GEO_REGION_SIZE * factor;
+			final int sampleCount = xzUp * xzUp;
+			if (_sampledHeights.length != sampleCount)
+				_sampledHeights = new short[sampleCount];
 
-			for (int blockX = GeoEngine.GEO_REGION_SIZE, blockY, vertexX, vertexY, factorX, factorY; blockX-- > 0;) {
-				for (blockY = GeoEngine.GEO_REGION_SIZE; blockY-- > 0;) {
-					for (factorX = factor; factorX-- > 0;) {
-						vertexX = blockX * factor + factorX;
-						for (factorY = factor; factorY-- > 0;) {
-							vertexY = blockY * factor + factorY;
-							vertexBuffer.position((vertexY * xzUp + vertexX) * 3);
-							vertexBuffer.put((short) vertexX);
-							vertexBuffer.put((short) (getHeight(blocks, blockX, blockY, factorX * cells,
-									factorY * cells, cells, flipped) / 16f - 0.5f));
-							vertexBuffer.put((short) vertexY);
+			// Each cell group is shared by up to four neighboring vertices. Cache its
+			// height once instead of rescanning the same geodata groups repeatedly.
+			for (int blockY = 0; blockY < GeoEngine.GEO_REGION_SIZE; blockY++) {
+				for (int factorY = 0; factorY < factor; factorY++) {
+					for (int blockX = 0; blockX < GeoEngine.GEO_REGION_SIZE; blockX++) {
+						for (int factorX = 0; factorX < factor; factorX++) {
+							final int sampleX = blockX * factor + factorX;
+							final int sampleY = blockY * factor + factorY;
+							_sampledHeights[sampleY * xzUp + sampleX] = (short) getBlockHeightOfGroup(
+									blocks[blockX][blockY], factorX * cells, factorY * cells, cells, flipped);
 						}
 					}
 				}
 			}
 
-			vertexBuffer.position(vertexBuffer.capacity());
+			for (int vertexY = 0; vertexY < xzUp; vertexY++) {
+				for (int vertexX = 0; vertexX < xzUp; vertexX++) {
+					vertexBuffer.put((short) vertexX);
+					vertexBuffer.put((short) (getVertexHeight(_sampledHeights, vertexX, vertexY, xzUp) / 16f - 0.5f));
+					vertexBuffer.put((short) vertexY);
+				}
+			}
 		}
 
-		private final int getHeight(final GeoBlock[][] blocks, final int blockX, final int blockY, final int cellX,
-				final int cellY, final int cells, final boolean flipped) {
+		static int getVertexHeight(final short[] sampledHeights, final int vertexX, final int vertexY,
+				final int xzUp) {
 			int height = Integer.MAX_VALUE;
-			height = Math.min(height,
-					getBlockHeightOfGroup(blocks, blockX, blockY, cellX - cells, cellY - cells, cells, flipped));
-			height = Math.min(height,
-					getBlockHeightOfGroup(blocks, blockX, blockY, cellX - cells, cellY, cells, flipped));
-			height = Math.min(height,
-					getBlockHeightOfGroup(blocks, blockX, blockY, cellX, cellY - cells, cells, flipped));
-			height = Math.min(height, getBlockHeightOfGroup(blocks, blockX, blockY, cellX, cellY, cells, flipped));
+			if (vertexX > 0 && vertexY > 0)
+				height = Math.min(height, sampledHeights[(vertexY - 1) * xzUp + vertexX - 1]);
+			if (vertexY > 0)
+				height = Math.min(height, sampledHeights[(vertexY - 1) * xzUp + vertexX]);
+			if (vertexX > 0)
+				height = Math.min(height, sampledHeights[vertexY * xzUp + vertexX - 1]);
+			height = Math.min(height, sampledHeights[vertexY * xzUp + vertexX]);
 			return height;
-		}
-
-		private final int getBlockHeightOfGroup(final GeoBlock[][] blocks, int blockX, int blockY, int cellX, int cellY,
-				final int cells, final boolean flipped) {
-			if (cellX < 0) {
-				blockX -= 1;
-				cellX = GeoEngine.GEO_BLOCK_SHIFT - cells;
-			} else if (cellX >= GeoEngine.GEO_BLOCK_SHIFT) {
-				blockX += 1;
-				cellX = 0;
-			}
-
-			if (cellY < 0) {
-				blockY -= 1;
-				cellY = GeoEngine.GEO_BLOCK_SHIFT - cells;
-			} else if (cellY >= GeoEngine.GEO_BLOCK_SHIFT) {
-				blockY += 1;
-				cellY = 0;
-			}
-
-			if (blockX < 0 || blockY < 0 || blockX >= GeoEngine.GEO_REGION_SIZE || blockY >= GeoEngine.GEO_REGION_SIZE)
-				return Short.MAX_VALUE;
-
-			return getBlockHeightOfGroup(blocks[blockX][blockY], cellX, cellY, cells, flipped);
 		}
 
 		private final int getBlockHeightOfGroup(final GeoBlock block, final int cellX, final int cellY, final int cells,
 				final boolean flipped) {
+			if (block.getType() == GeoEngine.GEO_BLOCK_TYPE_FLAT)
+				return block.getMinHeight();
+
 			int height = Integer.MAX_VALUE, x, y;
 			for (x = cells; x-- > 0;) {
 				for (y = cells; y-- > 0;) {

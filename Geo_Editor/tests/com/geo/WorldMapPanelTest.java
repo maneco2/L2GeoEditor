@@ -15,6 +15,7 @@
 package com.geo;
 
 import java.awt.image.BufferedImage;
+import java.awt.Rectangle;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.swing.mapselector.WorldMapPanel;
 
@@ -28,6 +29,11 @@ public final class WorldMapPanelTest {
         panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_PRESSED,
                 System.currentTimeMillis(), 0, 55, 50, 1, false, java.awt.event.MouseEvent.BUTTON1));
         if (x.get() != 5 || y.get() != 5) throw new AssertionError("world map click mapping");
+        final Rectangle bounds = WorldMapPanel.calculateMapBounds(600, 600, 17, 16);
+        if (Math.abs(bounds.width / 17d - bounds.height / 16d) > 0.1d)
+            throw new AssertionError("world map cells must remain square");
+        if (bounds.x != 0 || bounds.y <= 0)
+            throw new AssertionError("world map must be centered without stretching");
         System.out.println("WorldMapPanelTest OK");
     }
 }

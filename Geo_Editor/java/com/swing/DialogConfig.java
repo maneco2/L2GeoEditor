@@ -160,12 +160,17 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_checkTerrainDefaultOn.setToolTipText("Show or hide the textured terrain immediately (shortcut: T).");
 		_checkTransparency = new JCheckBox("Transparency");
 		_checkDrawOutline = new JCheckBox("Draw Outline");
-		_checkFullMap = new JCheckBox("Full Map (stream neighboring regions)");
-		_checkFullMap.setToolTipText("ON: load and cross neighboring regions. OFF: keep only the active region.");
-		_checkAuxiliaryTerrains = new JCheckBox("Auxiliary terrains");
-		_checkAuxiliaryTerrains.setToolTipText("Load and show neighboring geodata without changing the active region.");
+		_checkFullMap = new JCheckBox("Full Map (camera transitions)");
+		_checkFullMap.setToolTipText(
+				"Move the active region with the camera, reusing neighboring regions already in memory.");
+		_checkAuxiliaryTerrains = new JCheckBox("Auxiliary terrains (visualization)");
+		_checkAuxiliaryTerrains.setToolTipText(
+				"Load neighboring terrain for visual context without changing the active region.");
+		_checkFullMap.addActionListener(event -> updateStreamingControlState());
+		_checkAuxiliaryTerrains.addActionListener(event -> updateStreamingControlState());
 		_checkShowGeodataGrid = new JCheckBox("Show Geodata Grid");
 		_checkShowGeodataGrid.setToolTipText("Show the editable geodata grid and enable mouse editing.");
+		_checkShowGeodataGrid.addActionListener(event -> updateGeodataControlState());
 		_checkCircularGeodataGrid = new JCheckBox("Circular Geodata Grid (selectable)");
 		_checkCircularGeodataGrid.setToolTipText("Show and select geodata cells inside a circular area around the camera.");
 		_checkFullTexturedTerrain = new JCheckBox("Show full textured terrain");
@@ -308,7 +313,7 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 		_panelMisc.add(_spinnerCameraSpeed, gbc);
 
 		_panelEditor.setLayout(new GridBagLayout());
-		_panelEditor.setBorder(BorderFactory.createTitledBorder("Performance"));
+		_panelEditor.setBorder(BorderFactory.createTitledBorder("Streaming and performance"));
 		gbc.gridx = 0;
 		gbc.gridy = 0;
 		gbc.gridwidth = 1;
@@ -473,12 +478,32 @@ public final class DialogConfig extends JDialog implements MouseListener, Action
 			_fieldGeodataPath.setText(Config.PATH_TO_GEO_FILES);
 			_comboNSWETexture.setSelectedItem(Config.NSWE_TEXTURE_ID);
 			checkDLLoDSliderEnabled();
+			updateStreamingControlState();
+			updateGeodataControlState();
 		}
 
 		super.setVisible(visible);
 
 		if (!visible)
 			GLDisplay.getInstance().requestFocus();
+	}
+
+	private void updateStreamingControlState() {
+		final boolean enabled = _checkFullMap.isSelected() || _checkAuxiliaryTerrains.isSelected();
+		_labelNeighborTextures.setEnabled(enabled);
+		_sliderNeighborTextures.setEnabled(enabled);
+		final String help = enabled
+				? "Maximum neighboring regions kept in the shared resident window."
+				: "Enable Full Map or Auxiliary terrains to load neighboring regions.";
+		_labelNeighborTextures.setToolTipText(help);
+		_sliderNeighborTextures.setToolTipText(help);
+	}
+
+	private void updateGeodataControlState() {
+		final boolean enabled = _checkShowGeodataGrid.isSelected();
+		_checkCircularGeodataGrid.setEnabled(enabled);
+		_labelGridRange.setEnabled(enabled);
+		_sliderGridRange.setEnabled(enabled);
 	}
 
 	@Override

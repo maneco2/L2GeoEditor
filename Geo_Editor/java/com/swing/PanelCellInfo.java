@@ -271,8 +271,8 @@ public final class PanelCellInfo extends JPanel {
 			_fieldLayers.setText("");
 		} else {
 			setFieldsEnabled(true);
-			_fieldRegionX.setText(String.valueOf(GeoEngine.getRegionXY(cell.getGeoX())));
-			_fieldRegionY.setText(String.valueOf(GeoEngine.getRegionXY(cell.getGeoY())));
+			_fieldRegionX.setText(String.valueOf(GeoEngine.getRegionXY(cell.getGeoX()) + 10));
+			_fieldRegionY.setText(String.valueOf(GeoEngine.getRegionXY(cell.getGeoY()) + 10));
 			_fieldWorldX.setText(String.valueOf(GeoEngine.getWorldX(cell.getGeoX())));
 			_fieldWorldY.setText(String.valueOf(GeoEngine.getWorldY(cell.getGeoY())));
 			_fieldGeoX.setText(String.valueOf(cell.getGeoX()));

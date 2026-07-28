@@ -88,6 +88,7 @@ public final class PerformanceMetricsTest {
 		check(PerformanceMetrics.formatReport(snapshot).contains("visibleNeighbors=3"),
 				"visible neighbor report");
 		check(snapshot.peakMemoryBytes() > 0L, "peak memory");
+		check(snapshot.heapUsedBytes() > 0L, "used heap");
 		check(snapshot.heapCommittedBytes() >= snapshot.peakMemoryBytes(), "committed heap");
 		check(snapshot.heapMaxBytes() >= snapshot.heapCommittedBytes(), "maximum heap");
 		check(MemoryUsage.formatHud(new MemoryUsage.Snapshot(3_792L * 1024L * 1024L,
@@ -95,6 +96,9 @@ public final class PerformanceMetricsTest {
 				7_626L * 1024L * 1024L)).equals("Memory: 7626mb"), "process memory HUD label");
 		check(PerformanceMetrics.formatReport(snapshot).contains("heapCommittedBytes="),
 				"committed heap report");
+		check(PerformanceMetrics.formatReport(snapshot).contains("heapUsedBytes="), "used heap report");
+		check(PerformanceMetrics.formatReport(snapshot).contains("processResidentBytes="),
+				"resident memory report");
 		metrics.recordRegionLoad(900L, true);
 		check(metrics.snapshot().neighborLoadMicros() == 0L, "neighbor total reset for new center");
 		final PerformanceMetrics deterministic = new PerformanceMetrics();

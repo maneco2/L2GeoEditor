@@ -31,4 +31,11 @@ public final class RegionStreamingPolicy {
 	public static boolean shouldTransitionRegion(final boolean fullMap) {
 		return fullMap;
 	}
+
+	public static boolean shouldReuseWindow(final int currentCenterX, final int currentCenterY,
+			final int currentRadius, final int requestedCenterX, final int requestedCenterY,
+			final int requestedRadius) {
+		return currentCenterX == requestedCenterX && currentCenterY == requestedCenterY
+				&& currentRadius == requestedRadius;
+	}
 }

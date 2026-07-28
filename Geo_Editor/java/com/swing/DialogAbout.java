@@ -60,7 +60,8 @@ public final class DialogAbout extends JDialog {
 			{ "Change selection radius", "Mouse wheel or middle mouse button" },
 			{ "Change radius faster", "Space + mouse wheel" },
 			{ "Change selected height", "Ctrl + mouse wheel" },
-			{ "Change height faster", "Ctrl + Space + mouse wheel" }
+			{ "Change height faster", "Ctrl + Space + mouse wheel" },
+			{ "Resize minimap", "Drag its lower-right corner" }
 	};
 
 	private final ControlsTableModel _controlsModel = new ControlsTableModel();
@@ -120,6 +121,9 @@ public final class DialogAbout extends JDialog {
 		panel.add(createText("<html><b>Project</b><br><br>"
 				+ "Source code and documentation: github.com/maneco2/L2GeoEditor</html>"));
 		panel.add(Box.createVerticalStrut(22));
+		panel.add(createText("<html><b>Credits</b><br><br>"
+				+ "Original author: Forsaiken (Patrick). Maintained and modernized by Maneco2.</html>"));
+		panel.add(Box.createVerticalStrut(22));
 		panel.add(createText("<html><b>License</b><br><br>"
 				+ "GNU General Public License v3 or any later version. Distributed without warranty.</html>"));
 		panel.add(Box.createVerticalGlue());
@@ -140,11 +144,12 @@ public final class DialogAbout extends JDialog {
 				{ "File version", Config.APP_VERSION },
 				{ "Product name", Config.APP_NAME },
 				{ "Product version", Config.APP_VERSION },
-				{ "Developer", "Maneco2" },
+				{ "Original author", "Forsaiken (Patrick)" },
+				{ "Maintainer", "Maneco2" },
 				{ "Java runtime", System.getProperty("java.version", "Unknown") },
 				{ "Renderer", "JOGL / OpenGL" },
 				{ "License", "GNU GPL v3 or later" },
-				{ "Original filename", "GeoEditor.exe / GeoEditor.jar" }
+				{ "Original filename", "GeoEditor.exe" }
 		};
 		final JTable table = new JTable(new ReadOnlyTableModel(details, new String[] { "Property", "Value" }));
 		table.setRowHeight(25);

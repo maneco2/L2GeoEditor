@@ -20,6 +20,7 @@ import com.util.FastArrayList;
 
 import java.io.File;
 import java.awt.Color;
+import java.awt.Rectangle;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
@@ -193,9 +194,13 @@ public final class GLGUIRenderer {
 		}
 		if (_regionMapTexture == null)
 			return;
-		final int size = Config.MINI_MAP_SIZE;
-		final int left = Config.MINI_MAP_MARGIN;
-		final int bottom = GLDisplay.getInstance().getHeight() - size - Config.MINI_MAP_MARGIN;
+		final Rectangle bounds = MiniMapLayout.calculateBounds(GLDisplay.getInstance().getWidth(),
+				GLDisplay.getInstance().getHeight(), Config.MINI_MAP_SIZE, Config.MINI_MAP_MARGIN);
+		final int size = bounds.width;
+		if (size <= 0)
+			return;
+		final int left = bounds.x;
+		final int bottom = bounds.y;
 		GLState.setBlendEnabled(gl, true);
 		GLState.setBlendFunc(gl, GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 		_regionMapTexture.enable();

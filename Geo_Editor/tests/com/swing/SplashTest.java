@@ -30,7 +30,7 @@ public final class SplashTest {
 		check(wideTarget.width == 1920, "fills target width");
 		check(wideTarget.height >= 1080 && wideTarget.y <= 0, "crops vertically");
 		check(Splash.calculateCoverBounds(0, 0, 1920, 1080).isEmpty(), "invalid dimensions");
-		check(Splash.calculateFadeDurationMillis(0.015F) >= 1_650L, "smooth fade-out duration");
+		check(Splash.calculateFadeDurationMillis(0.01F) >= 2_500L, "smooth fade-out duration");
 		check(Splash.calculateFadeDurationMillis(0F) == 0L, "invalid fade step");
 		System.out.println("SplashTest OK");
 	}

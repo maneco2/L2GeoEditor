@@ -1,39 +1,57 @@
 [CmdletBinding()]
-param([switch]$Installer)
+param()
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 $root = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root 'build'
-$inputDir = Join-Path $build '_jpackage-input'
-$outputDir = Join-Path $build 'package'
 $jar = Join-Path $build 'GeoEditor.jar'
+$exe = Join-Path $build 'GeoEditor.exe'
+$logs = Join-Path $build 'logs'
+$config = Join-Path $PSScriptRoot 'launch4j.xml'
+$launch4jHome = Join-Path $PSScriptRoot 'launch4j'
+$launch4jJar = Join-Path $launch4jHome 'launch4j-3.50.jar'
+$launch4jLib = Join-Path $launch4jHome 'lib\*'
+$buildScript = Join-Path $PSScriptRoot 'build-fast.ps1'
 
-if (-not (Test-Path -LiteralPath $jar)) { throw 'GeoEditor.jar was not found. Run BuildEditor.bat first.' }
-if (Test-Path -LiteralPath $inputDir) { Remove-Item -LiteralPath $inputDir -Recurse -Force }
-New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
-Copy-Item -LiteralPath $jar -Destination $inputDir -Force
-Copy-Item -LiteralPath (Join-Path $build 'libs') -Destination $inputDir -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $build 'data') -Destination $inputDir -Recurse -Force
+Write-Host '== GeoEditor portable EXE build ==' -ForegroundColor Cyan
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $buildScript
+if ($LASTEXITCODE -ne 0) {
+    throw "GeoEditor build failed with exit code $LASTEXITCODE."
+}
+if (-not (Test-Path -LiteralPath $jar)) {
+    throw 'GeoEditor.jar was not generated.'
+}
+if (-not (Test-Path -LiteralPath $launch4jJar)) {
+    throw 'Launch4j 3.50 is required. Extract it locally to tools\launch4j (this toolchain is intentionally ignored by Git).'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $launch4jHome 'bin\windres.exe'))) {
+    throw 'The local tools\launch4j directory is incomplete: bin\windres.exe was not found.'
+}
 
-New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-$args = @('--type', 'app-image', '--name', 'GeoEditor', '--input', $inputDir,
-    '--main-jar', 'GeoEditor.jar', '--main-class', 'com.GeoEditor', '--dest', $outputDir,
-    '--app-version', '2.0.3.41',
-    '--description', 'Lineage II Geodata Editor',
-    '--vendor', 'Maneco2',
-	'--copyright', 'GNU General Public License v3 or later',
-	'--java-options', '-XX:+UseG1GC',
-	'--java-options', '-XX:+ExplicitGCInvokesConcurrent',
-	'--java-options', '-XX:MinHeapFreeRatio=10',
-	'--java-options', '-XX:MaxHeapFreeRatio=20',
-	'--java-options', '-XX:MaxRAMPercentage=75.0',
-    '--java-options', '--enable-native-access=ALL-UNNAMED',
-    '--java-options', '--add-exports=java.base/java.lang=ALL-UNNAMED',
-    '--java-options', '--add-exports=java.desktop/sun.awt=ALL-UNNAMED',
-    '--java-options', '--add-exports=java.desktop/sun.java2d=ALL-UNNAMED')
-if ($Installer) { $args[1] = 'exe' }
-& jpackage @args
-$exitCode = $LASTEXITCODE
-Remove-Item -LiteralPath $inputDir -Recurse -Force
-if ($exitCode -ne 0) { throw "jpackage failed with exit code $exitCode." }
-Write-Host "Windows application generated at: $outputDir" -ForegroundColor Green
+if (Test-Path -LiteralPath $exe) {
+    Remove-Item -LiteralPath $exe -Force
+}
+
+$classPath = "$launch4jJar;$launch4jLib"
+& java -cp $classPath net.sf.launch4j.Main $config
+if ($LASTEXITCODE -ne 0) {
+    throw "Launch4j failed with exit code $LASTEXITCODE."
+}
+if (-not (Test-Path -LiteralPath $exe)) {
+    throw 'GeoEditor.exe was not generated.'
+}
+
+# The temporary JAR is embedded in the EXE. Runtime data, libraries and native DLLs remain external.
+Remove-Item -LiteralPath $jar -Force
+if (Test-Path -LiteralPath $logs) {
+    Remove-Item -LiteralPath $logs -Recurse -Force
+}
+
+$versionInfo = (Get-Item -LiteralPath $exe).VersionInfo
+Write-Host 'Portable application generated successfully.' -ForegroundColor Green
+Write-Host "Output: $exe"
+Write-Host "Version: $($versionInfo.ProductVersion)"
+Write-Host 'External runtime folders preserved: build\libs and build\data'
+Write-Host 'Runtime logs removed from the final portable build'

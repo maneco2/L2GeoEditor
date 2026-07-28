@@ -100,7 +100,6 @@ public final class GLDisplay implements GLEventListener {
 	private final GLCamera _camera;
 	private final GLTerrain _terrain;
 	private final Map<RegionLoadManager.RegionKey, GLTerrain> _neighborTerrains;
-	private final GLGlobalMapRenderer _globalMap;
 	private final AWTInput _input;
 	private final GLText _fpsText;
 	private final GLText _performanceText;
@@ -112,6 +111,7 @@ public final class GLDisplay implements GLEventListener {
 	private final PerformanceMetrics _performanceMetrics;
 	private final ConcurrentLinkedQueue<PendingRegionDiscard> _pendingRegionDiscards =
 			new ConcurrentLinkedQueue<>();
+	private volatile long _completedFrames;
 
 	private GLCellRenderer _renderer;
 	private GeoCell _prevPick;
@@ -133,7 +133,9 @@ public final class GLDisplay implements GLEventListener {
 	private long _timeFPS;
 	private int _loopsPS;
 	private int _elementsPS;
-	private int _lastCallsPerFrame;
+	private int _drawCallsPS;
+	private int _lastElementsPerFrame;
+	private int _lastDrawCallsPerFrame;
 	private int _neighborPrepareCooldown;
 	private boolean _neighborTexturedMode;
 	private int _neighborTextureLimit = -1;
@@ -146,7 +148,6 @@ public final class GLDisplay implements GLEventListener {
 		_camera = new GLCamera();
 		_terrain = new GLTerrain();
 		_neighborTerrains = new LinkedHashMap<>();
-		_globalMap = new GLGlobalMapRenderer();
 		_input = new AWTInput();
 		_performanceMetrics = new PerformanceMetrics();
 
@@ -161,6 +162,11 @@ public final class GLDisplay implements GLEventListener {
 
 	public final GLCanvas getCanvas() {
 		return _canvas;
+	}
+
+	/** True after enough complete buffer swaps to safely reveal the main window. */
+	public final boolean isStartupRenderReady() {
+		return _canvas.isShowing() && _completedFrames >= 3L;
 	}
 
 	public final void requestFocus() {
@@ -235,7 +241,12 @@ public final class GLDisplay implements GLEventListener {
 					+ System.lineSeparator() + "scenario.fullTexturedTerrain=" + Config.FULL_TEXTURED_TERRAIN
 					+ System.lineSeparator() + "scenario.visibleGridRange=" + Config.VIS_GRID_RANGE
 					+ System.lineSeparator() + "scenario.maxVisibleNeighbors=" + Config.MAX_NEIGHBOR_TEXTURES
-					+ System.lineSeparator() + "callsPerFrame=" + _lastCallsPerFrame
+					+ System.lineSeparator() + "scenario.cameraGeoPosition=" + _camera.getGeoX() + ","
+					+ _camera.getGeoY() + "," + _camera.getGeoZ()
+					+ System.lineSeparator() + "scenario.cameraRotation=" + _camera.getRotX() + ","
+					+ _camera.getRotY()
+					+ System.lineSeparator() + "renderedElementsPerFrame=" + _lastElementsPerFrame
+					+ System.lineSeparator() + "drawCallsPerFrame=" + _lastDrawCallsPerFrame
 					+ System.lineSeparator();
 			Files.writeString(report, scenario + PerformanceMetrics.formatReport(_performanceMetrics.snapshot()),
 					StandardCharsets.UTF_8);
@@ -289,7 +300,6 @@ public final class GLDisplay implements GLEventListener {
 		for (final GLTerrain terrain : _neighborTerrains.values())
 			terrain.dispose(gl);
 		_neighborTerrains.clear();
-		_globalMap.dispose(gl);
 	}
 
 	/**
@@ -307,12 +317,15 @@ public final class GLDisplay implements GLEventListener {
 		if (TimeUnit.SECONDS.convert(_timeFPS, TimeUnit.NANOSECONDS) >= 1) {
 			final double fps = _loopsPS == 0 ? Double.POSITIVE_INFINITY : nanosToFps(_timeFPS / _loopsPS);
 			final int elements = _elementsPS / (_loopsPS == 0 ? 1 : _loopsPS);
-			_lastCallsPerFrame = elements;
+			final int drawCalls = _drawCallsPS / (_loopsPS == 0 ? 1 : _loopsPS);
+			_lastElementsPerFrame = elements;
+			_lastDrawCallsPerFrame = drawCalls;
 			_timeFPS = 0L;
 			_loopsPS = 0;
 			_elementsPS = 0;
+			_drawCallsPS = 0;
 			_fpsText.setText("Fps:   " + roundFps(fps));
-			_callsText.setText("Calls: " + elements);
+			_callsText.setText("Elements/Draws: " + elements + "/" + drawCalls);
 			_memoryText.setText(MemoryUsage.formatHud(MemoryUsage.capture()));
 		}
 
@@ -387,6 +400,7 @@ public final class GLDisplay implements GLEventListener {
 				selector = _renderSelector.getElementToRender(i);
 				_elementsPS += selector.getElementsToRender();
 				_renderer.render(gl, selector);
+				_drawCallsPS += _renderer.getDrawCallCount(selector);
 			}
 
 			if (Config.DRAW_OUTLINE && !(_renderer instanceof VBOGLSLRenderer)) {
@@ -415,6 +429,7 @@ public final class GLDisplay implements GLEventListener {
 					selector = _renderSelector.getElementToRender(i);
 					_elementsPS += selector.getElementsToRender();
 					_renderer.render(gl, selector);
+					_drawCallsPS += _renderer.getDrawCallCount(selector);
 				}
 				GLState.lockColor(false);
 				gl.glDepthFunc(GL2.GL_LESS);
@@ -436,6 +451,7 @@ public final class GLDisplay implements GLEventListener {
 			_input.getMouseEvents().clear();
 			_guiRenderer.render(gl);
 			_performanceMetrics.endFrame();
+			_completedFrames++;
 			return;
 		}
 
@@ -490,6 +506,7 @@ public final class GLDisplay implements GLEventListener {
 				_input.getMouseButton3() ? null : _camera.pick(gl, _glu, _input.getMouseX(), _input.getMouseY()));
 		_guiRenderer.render(gl);
 		_performanceMetrics.endFrame();
+		_completedFrames++;
 	}
 
 	private static String textureProgressBar() {
@@ -506,12 +523,14 @@ public final class GLDisplay implements GLEventListener {
 		long flatLayerCount = 0L;
 		long complexLayerCount = 0L;
 		long multilayerLayerCount = 0L;
-		for (final GeoRegion region : loadedRegions.values())
-			loadedLayerCount += region.getTotalLayerCount();
 		for (final GeoRegion region : loadedRegions.values()) {
-			flatLayerCount += region.getTotalLayerCount(GeoEngine.GEO_BLOCK_TYPE_FLAT);
-			complexLayerCount += region.getTotalLayerCount(GeoEngine.GEO_BLOCK_TYPE_COMPLEX);
-			multilayerLayerCount += region.getTotalLayerCount(GeoEngine.GEO_BLOCK_TYPE_MULTILAYER);
+			final long flat = region.getTotalLayerCount(GeoEngine.GEO_BLOCK_TYPE_FLAT);
+			final long complex = region.getTotalLayerCount(GeoEngine.GEO_BLOCK_TYPE_COMPLEX);
+			final long multilayer = region.getTotalLayerCount(GeoEngine.GEO_BLOCK_TYPE_MULTILAYER);
+			flatLayerCount += flat;
+			complexLayerCount += complex;
+			multilayerLayerCount += multilayer;
+			loadedLayerCount += flat + complex + multilayer;
 		}
 		_performanceMetrics.setLoadedLayerCount(loadedLayerCount);
 		_performanceMetrics.setLayerCounts(flatLayerCount, complexLayerCount, multilayerLayerCount);

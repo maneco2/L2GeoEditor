@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project name="G3DEditor Windows x64" default="dist-deflate" basedir=".">
+<project name="GeoEditor Windows x64" default="dist-deflate" basedir=".">
 	<property name="main" location="com.GeoEditor" />
 	<property name="source.java" location="java" />
 	<property name="source.runtime" location="src" />
@@ -23,11 +23,7 @@
 
 	<target name="clean">
 		<delete dir="${build.classes}" />
-		<delete file="${build.geo}/G3DEditor.jar" quiet="true" />
 		<delete file="${build.geo}/GeoEditor.jar" quiet="true" />
-		<delete file="${build.geo}/G3DEditor.bat" quiet="true" />
-		<delete file="${build.geo}/GeoEditor.bat" quiet="true" />
-		<delete file="${build}/G3DEditor.zip" quiet="true" />
 	</target>
 
 	<target name="init" depends="clean">
@@ -81,6 +77,5 @@
 
 	<target name="dist-deflate" depends="dist">
 		<delete dir="${build.classes}" quiet="true" />
-		<delete file="${build}/G3DEditor.zip" quiet="true" />
 	</target>
 </project>

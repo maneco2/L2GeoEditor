@@ -17,6 +17,7 @@ package com.swing.mapselector;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.function.BiConsumer;
 import javax.swing.JPanel;
@@ -35,8 +36,10 @@ public final class RegionMapPanel extends JPanel {
         final java.awt.event.MouseAdapter selector = new java.awt.event.MouseAdapter() {
             private void select(final java.awt.event.MouseEvent event) {
                 if (!javax.swing.SwingUtilities.isLeftMouseButton(event)) return;
-                markerU = Math.max(0d, Math.min(1d, event.getX() / (double) Math.max(1, getWidth())));
-                markerV = Math.max(0d, Math.min(1d, event.getY() / (double) Math.max(1, getHeight())));
+                final Rectangle bounds = squareBounds(getWidth(), getHeight());
+                if (!bounds.contains(event.getPoint())) return;
+                markerU = Math.max(0d, Math.min(1d, (event.getX() - bounds.x) / (double) Math.max(1, bounds.width)));
+                markerV = Math.max(0d, Math.min(1d, (event.getY() - bounds.y) / (double) Math.max(1, bounds.height)));
                 repaint();
                 clickListener.accept((int) (markerU * 256d), (int) (markerV * 256d));
             }
@@ -60,10 +63,12 @@ public final class RegionMapPanel extends JPanel {
     }
 
     @Override protected void paintComponent(final Graphics graphics) {
-        super.paintComponent(graphics); graphics.drawImage(image, 0, 0, getWidth(), getHeight(), null);
+        super.paintComponent(graphics);
+        final Rectangle bounds = squareBounds(getWidth(), getHeight());
+        graphics.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height, null);
         if (markerU >= 0d) {
-            final int markerX = (int) Math.round(markerU * Math.max(0, getWidth() - 1));
-            final int markerY = (int) Math.round(markerV * Math.max(0, getHeight() - 1));
+            final int markerX = bounds.x + (int) Math.round(markerU * Math.max(0, bounds.width - 1));
+            final int markerY = bounds.y + (int) Math.round(markerV * Math.max(0, bounds.height - 1));
               graphics.setColor(new Color(255, 40, 40, 90));
               graphics.fillOval(markerX - 12, markerY - 12, 24, 24);
               graphics.setColor(Color.WHITE);
@@ -72,5 +77,10 @@ public final class RegionMapPanel extends JPanel {
               graphics.drawOval(markerX - 8, markerY - 8, 16, 16);
               graphics.fillOval(markerX - 3, markerY - 3, 6, 6);
         }
+    }
+
+    private static Rectangle squareBounds(final int width, final int height) {
+        final int size = Math.max(0, Math.min(width, height));
+        return new Rectangle((width - size) / 2, (height - size) / 2, size, size);
     }
 }

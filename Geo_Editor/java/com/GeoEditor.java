@@ -27,6 +27,7 @@ import javax.media.opengl.awt.GLCanvas;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
 import javax.swing.ToolTipManager;
+import java.awt.Toolkit;
 
 import com.jogamp.opengl.util.Animator;
 
@@ -71,6 +72,8 @@ public final class GeoEditor {
 				GLDisplay.init(canvas);
 				canvas.addGLEventListener(GLDisplay.getInstance());
 				FrameMain.init();
+				FrameMain.getInstance().showRestored();
+				new Animator(canvas).start();
 			}
 		}, new CheckedRunnable() {
 			@Override
@@ -81,9 +84,12 @@ public final class GeoEditor {
 				if (GeoBlockSelector.getInstance() == null)
 					return false;
 
-				if (FrameMain.getInstance() == null)
+				final FrameMain frame = FrameMain.getInstance();
+				if (frame == null || !frame.isShowing())
 					return false;
-				return true;
+
+				final GLDisplay display = GLDisplay.getInstance();
+				return display != null && display.isStartupRenderReady();
 			}
 		}, new Runnable() {
 			@Override
@@ -93,13 +99,13 @@ public final class GeoEditor {
 						@Override
 						public final void run() {
 							FrameMain.getInstance().validate();
-							FrameMain.getInstance().setVisible(true);
+							FrameMain.getInstance().repaint();
+							Toolkit.getDefaultToolkit().sync();
 						}
 					});
 				} catch (final Exception e) {
 					throw new RuntimeException("Unable to show the editor on the Swing EDT", e);
 				}
-				new Animator(GLDisplay.getInstance().getCanvas()).start();
 			}
 		});
 	}

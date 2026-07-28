@@ -198,6 +198,11 @@ public abstract class GLCellRenderer {
 
 	protected static final int GEOMETRY_TEXTURE_DATA_LENGTH = GEOMETRY_TEXTURE_DATA.length;
 
+	/** Number of GPU draw submissions performed for this selected block. */
+	public int getDrawCallCount(final GLSubRenderSelector selector) {
+		return selector == null ? 0 : selector.getElementsToRender();
+	}
+
 	protected static final void renderCellFull(final GL2 gl, final boolean big, final int nswe) {
 		final float size = big ? 7.9f : 0.9f;
 		gl.glBegin(GL2.GL_TRIANGLE_STRIP);

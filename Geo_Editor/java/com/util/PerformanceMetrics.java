@@ -21,7 +21,7 @@ package com.util;
  */
 public final class PerformanceMetrics {
 	public record Snapshot(long frames, long lastFrameMicros, long peakMemoryBytes,
-			long heapCommittedBytes, long heapMaxBytes,
+			long heapUsedBytes, long heapCommittedBytes, long heapMaxBytes, long processResidentBytes,
 			long lastCentralLoadMicros, long neighborLoadMicros, int loadedRegions,
 			long loadedLayerCount, long flatLayerCount, long complexLayerCount, long multilayerLayerCount,
 			long averageFrameMicros, long worstFrameMicros, int slowFrames, long lastRegionDiscardMicros,
@@ -149,7 +149,7 @@ public final class PerformanceMetrics {
 				worstFrameMicros = _frameWindow[i];
 		}
 		return new Snapshot(_frames, _lastFrameMicros, _peakMemoryBytes,
-				memory.committedBytes(), memory.maxBytes(),
+				memory.usedBytes(), memory.committedBytes(), memory.maxBytes(), memory.processResidentBytes(),
 				_lastCentralLoadMicros, _neighborLoadMicros, _loadedRegions, _loadedLayerCount,
 				_flatLayerCount, _complexLayerCount, _multilayerLayerCount,
 				_frameWindowCount == 0 ? 0L : _frameWindowTotal / _frameWindowCount,
@@ -175,8 +175,10 @@ public final class PerformanceMetrics {
 				+ "worstFrameMicros=" + snapshot.worstFrameMicros() + System.lineSeparator()
 				+ "slowFrames=" + snapshot.slowFrames() + System.lineSeparator()
 				+ "peakMemoryBytes=" + snapshot.peakMemoryBytes() + System.lineSeparator()
+				+ "heapUsedBytes=" + snapshot.heapUsedBytes() + System.lineSeparator()
 				+ "heapCommittedBytes=" + snapshot.heapCommittedBytes() + System.lineSeparator()
 				+ "heapMaxBytes=" + snapshot.heapMaxBytes() + System.lineSeparator()
+				+ "processResidentBytes=" + snapshot.processResidentBytes() + System.lineSeparator()
 				+ "loadedRegions=" + snapshot.loadedRegions() + System.lineSeparator()
 				+ "loadedLayerCount=" + snapshot.loadedLayerCount() + System.lineSeparator()
 				+ "flatLayerCount=" + snapshot.flatLayerCount() + System.lineSeparator()

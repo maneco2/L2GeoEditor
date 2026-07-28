@@ -15,6 +15,8 @@
 package com.swing;
 
 import com.util.Util;
+import com.Config;
+import com.util.WindowsWindowActivator;
 
 import java.awt.AlphaComposite;
 import java.awt.Color;
@@ -38,9 +40,9 @@ import javax.swing.SwingUtilities;
 @SuppressWarnings("serial")
 public final class Splash extends JWindow implements Runnable {
 	private static final float FADE_IN_STEP = 0.04F;
-	private static final float FADE_OUT_STEP = 0.015F;
+	private static final float FADE_OUT_STEP = 0.01F;
 	private static final long FADE_DELAY_MS = 25L;
-	private static final long EDITOR_SETTLE_MS = 400L;
+	private static final long EDITOR_SETTLE_MS = 150L;
 
 	public static interface CheckedRunnable {
 		public boolean run();
@@ -86,6 +88,7 @@ public final class Splash extends JWindow implements Runnable {
 	private void showSplash() {
 		final Runnable show = () -> {
 			setAlwaysOnTop(true);
+			setFocusableWindowState(false);
 			setBackground(new Color(0, 0, 0, 0));
 			setBounds(GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds());
 			setVisible(true);
@@ -113,6 +116,9 @@ public final class Splash extends JWindow implements Runnable {
 				Thread.sleep(remaining);
 
 			_showEditor.run();
+			// Bring the fully rendered editor directly behind this always-on-top
+			// splash before changing alpha, so the fade cannot reveal another app.
+			WindowsWindowActivator.activate(Config.APP_NAME + " [Beta " + Config.APP_VERSION + "]");
 			// Keep the splash fully opaque until Swing and the first OpenGL frames have
 			// populated the editor. This prevents a brief blank-frame flash on Windows.
 			Thread.sleep(EDITOR_SETTLE_MS);
@@ -124,6 +130,7 @@ public final class Splash extends JWindow implements Runnable {
 			SwingUtilities.invokeLater(() -> {
 				setVisible(false);
 				dispose();
+				WindowsWindowActivator.activate(Config.APP_NAME + " [Beta " + Config.APP_VERSION + "]");
 			});
 		}
 	}

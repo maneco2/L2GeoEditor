@@ -152,6 +152,13 @@ public final class VBOGLSLRenderer extends GLCellRenderer {
 		return _frameUniformUploadNanos / 1_000L;
 	}
 
+	@Override
+	public final int getDrawCallCount(final GLSubRenderSelector selector) {
+		if (selector == null || selector.getElementsToRender() == 0)
+			return 0;
+		return RendererBatchPolicy.drawCalls(selector.getGeoBlock().getType(), selector.getElementsToRender());
+	}
+
 	/**
 	 * @see g3deditor.jogl.GLCellRenderer#enableRender(javax.media.opengl.GL2)
 	 */

@@ -24,7 +24,7 @@ import com.swing.ThemeManager;
 import java.awt.Color;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.util.Properties;
 
 
@@ -38,7 +38,7 @@ public final class Config {
 	public static final String APP_NAME = "L2GeoEditor";
 	public static final String APP_VERSION = "2.0.3.41";
 	public static int MINI_MAP_SIZE = 144;
-	public static final int MINI_MAP_MARGIN = 1;
+	public static final int MINI_MAP_MARGIN = 0;
 	public static final float MINI_MAP_FADE_STEP = 0.12f;
 
 	private static final int mix(final Color c1, final Color c2, final float ratio) {
@@ -50,7 +50,9 @@ public final class Config {
 		return Math.min(((int) (v1 * ratio) + v2) / 2, 255);
 	}
 
-	private static final File CONFIG_FILE = new File("./GeoEditor.ini");
+	private static final File CONFIG_DIRECTORY = new File("./configs");
+	private static final File CONFIG_FILE = new File(CONFIG_DIRECTORY, "GeoEditor.xml");
+	private static final File LEGACY_CONFIG_FILE = new File("./GeoEditor.ini");
 	private static final ConfigProperties PROPERTIES = new ConfigProperties();
 	public static int DEFAULT_COLOR_GUI_SELECTED = Color.YELLOW.getRGB();
 	public static int DEFAULT_COLOR_FLAT_NORMAL = Color.BLUE.getRGB();
@@ -110,10 +112,15 @@ public final class Config {
 	public static int NSWE_TEXTURE_ID = 5;
 
 	public static final void load() {
+		boolean migrateLegacyConfig = false;
 		try {
 			if (CONFIG_FILE.isFile()) {
-				PROPERTIES.load(CONFIG_FILE);
-
+				PROPERTIES.loadXml(CONFIG_FILE);
+			} else if (LEGACY_CONFIG_FILE.isFile()) {
+				PROPERTIES.loadLegacy(LEGACY_CONFIG_FILE);
+				migrateLegacyConfig = true;
+			}
+			if (!PROPERTIES.isEmpty()) {
 				PATH_TO_GEO_FILES = PROPERTIES.getProperty("PATH_TO_GEO_FILES", PATH_TO_GEO_FILES);
 				TERRAIN_DEFAULT_ON = Boolean
 						.parseBoolean(PROPERTIES.getProperty("TERRAIN_DEFAULT_ON", String.valueOf(TERRAIN_DEFAULT_ON)));
@@ -194,6 +201,11 @@ public final class Config {
 		}
 
 		ThemeManager.apply(UI_THEME);
+		if (migrateLegacyConfig) {
+			save();
+			if (CONFIG_FILE.isFile() && !LEGACY_CONFIG_FILE.delete())
+				System.err.println("Unable to remove migrated legacy config: " + LEGACY_CONFIG_FILE);
+		}
 	}
 
 	private static int parseIntProperty(final String key, final int defaultValue) {
@@ -270,7 +282,7 @@ public final class Config {
 		for (final InputBindings.Action action : InputBindings.Action.values())
 			PROPERTIES.put(InputBindings.propertyName(action), InputBindings.serialize(action));
 
-		PROPERTIES.save(CONFIG_FILE);
+		PROPERTIES.saveXml(CONFIG_FILE);
 	}
 
 	private static int normalizeHeightStep(final int value) {
@@ -294,16 +306,28 @@ public final class Config {
 		ConfigProperties() {
 		}
 
-		final void load(final File file) throws Exception {
+		final void loadLegacy(final File file) throws Exception {
 			try (FileInputStream fis = new FileInputStream(file)) {
 				super.clear();
 				super.load(fis);
 			}
 		}
 
-		final void save(final File file) {
-			try (FileWriter fw = new FileWriter(file)) {
-				super.store(fw, "G3DEditor Config");
+		final void loadXml(final File file) throws Exception {
+			try (FileInputStream fis = new FileInputStream(file)) {
+				super.clear();
+				super.loadFromXML(fis);
+			}
+		}
+
+		final void saveXml(final File file) {
+			final File parent = file.getParentFile();
+			if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+				System.err.println("Unable to create config directory: " + parent);
+				return;
+			}
+			try (FileOutputStream fos = new FileOutputStream(file)) {
+				super.storeToXML(fos, "L2GeoEditor Config", "UTF-8");
 			} catch (final Exception e) {
 				e.printStackTrace();
 			}
