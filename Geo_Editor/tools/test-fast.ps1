@@ -3,9 +3,8 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$classes = Join-Path $root 'build\classes-test'
-$sources = Join-Path $root 'java'
-$tests = Join-Path $root 'tests'
+$classes = Join-Path $root 'Build\classes-test'
+. (Join-Path $PSScriptRoot 'core-source-files.ps1')
 
 if (Test-Path -LiteralPath $classes) {
     Remove-Item -LiteralPath $classes -Recurse -Force
@@ -14,48 +13,52 @@ if (Test-Path -LiteralPath $classes) {
 try {
     New-Item -ItemType Directory -Path $classes -Force | Out-Null
 
-    $mainSources = @(Get-ChildItem -LiteralPath $sources -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName)
-    $testSources = @(Get-ChildItem -LiteralPath $tests -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName)
-    & javac -encoding UTF-8 --release 25 -cp (Join-Path $root 'libs\*') -d $classes ($mainSources + $testSources)
+	$mainSources = @(Get-GeoEditorCoreSourceFiles -Root $root)
+	$testSources = @(
+		Get-ChildItem -LiteralPath (Join-Path $root 'tests\com\geo\core') -Filter '*.java' -File
+	)
+	$testSources += @(
+		'GeoBlockFormatTest.java',
+		'GeoEngineTest.java',
+		'RealGeodataFixtureTest.java',
+		'RegionLoadManagerTest.java',
+		'RegionStreamingPolicyTest.java',
+		'RegionWindowPlanTest.java',
+		'SelectionNavigationPolicyTest.java'
+	) | ForEach-Object { Join-Path $root "tests\com\geo\$_" }
+	$testSources += @(
+		(Join-Path $root 'tests\com\util\PerformanceMetricsTest.java'),
+		(Join-Path $root 'tests\com\util\WindowsProcessMemoryTest.java')
+	)
+	$testSources = @($testSources | ForEach-Object {
+		if ($_ -is [System.IO.FileInfo]) { $_.FullName } else { $_ }
+	})
+	& javac -encoding UTF-8 --release 25 -d $classes ($mainSources + $testSources)
     if ($LASTEXITCODE -ne 0) {
         throw "Test compilation failed with exit code $LASTEXITCODE."
     }
 
 	$testClasses = @(
-		'com.ConfigTest',
         'com.geo.GeoEngineTest',
+        'com.geo.core.GeoCoordinatesTest',
+        'com.geo.core.CameraStateTest',
+        'com.geo.core.RegionSnapshotLoaderTest',
+        'com.geo.core.EditableRegionSessionTest',
         'com.geo.GeoBlockFormatTest',
-        'com.geo.UnrHeaderTest',
-        'com.geo.MapSelectorStateTest',
-        'com.geo.WorldMapPanelTest',
+		'com.geo.RealGeodataFixtureTest',
         'com.geo.RegionLoadManagerTest',
-    'com.geo.RegionDiscardPolicyTest',
 	'com.geo.SelectionNavigationPolicyTest',
 		'com.geo.RegionStreamingPolicyTest',
-		'com.geo.RegionWindowPlanTest',
-		'com.util.PerformanceMetricsTest',
-		'com.util.WindowsProcessMemoryTest',
-        'com.jogl.CellGridMaskTest',
-    'com.jogl.TerrainBuilderXDetailTest',
-    'com.jogl.RendererBatchPolicyTest',
-    'com.jogl.MiniMapLayoutTest',
-        'com.jogl.AWTInputTest',
-        'com.util.TaskExecutorTest',
-		'com.swing.SplashTest',
-		'com.swing.NeighborLoadingOverlayTest',
-		'com.jogl.shader.uniform.GLUniformVec2ivTest'
+	'com.geo.RegionWindowPlanTest',
+	'com.util.PerformanceMetricsTest',
+	'com.util.WindowsProcessMemoryTest'
     )
 
     foreach ($testClass in $testClasses) {
-		& java '--enable-native-access=ALL-UNNAMED' -cp "$classes;$(Join-Path $root 'libs\*')" $testClass
+		& java '--enable-native-access=ALL-UNNAMED' -cp $classes $testClass
         if ($LASTEXITCODE -ne 0) {
             throw "$testClass failed with exit code $LASTEXITCODE."
         }
-    }
-
-	& java '--enable-native-access=ALL-UNNAMED' '-Djava.awt.headless=true' -cp "$classes;$(Join-Path $root 'libs\*')" com.swing.ThemeManagerTest
-    if ($LASTEXITCODE -ne 0) {
-        throw "com.swing.ThemeManagerTest failed with exit code $LASTEXITCODE."
     }
 }
 finally {

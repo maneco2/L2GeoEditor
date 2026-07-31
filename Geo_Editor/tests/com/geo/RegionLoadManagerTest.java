@@ -107,6 +107,40 @@ public final class RegionLoadManagerTest {
 					"stale generation retained an old region");
 		}
 		try (RegionLoadManager manager = new RegionLoadManager()) {
+			manager.selectCenter(50, 50, 2);
+			final var innerWindow = manager.snapshot().keySet().stream()
+					.filter(key -> Math.max(Math.abs(key.x() - 50), Math.abs(key.y() - 50)) <= 1)
+					.toList();
+			manager.markLoaded(innerWindow);
+			final AtomicInteger probes = new AtomicInteger();
+			manager.checkNeighborsAsync(key -> {
+				probes.incrementAndGet();
+				return true;
+			}).get(2L, TimeUnit.SECONDS);
+			check(probes.get() == 16, "increase must probe only the sixteen new outer regions");
+			final AtomicInteger loads = new AtomicInteger();
+			manager.loadAvailableNeighborsAsync(key -> {
+				loads.incrementAndGet();
+				return true;
+			}).get(2L, TimeUnit.SECONDS);
+			check(loads.get() == 16, "increase must load only missing outer regions");
+
+			manager.selectCenter(50, 50, 1);
+			manager.markLoaded(innerWindow);
+			probes.set(0);
+			loads.set(0);
+			manager.checkNeighborsAsync(key -> {
+				probes.incrementAndGet();
+				return true;
+			}).get(2L, TimeUnit.SECONDS);
+			manager.loadAvailableNeighborsAsync(key -> {
+				loads.incrementAndGet();
+				return true;
+			}).get(2L, TimeUnit.SECONDS);
+			check(probes.get() == 0, "decrease must not probe retained regions");
+			check(loads.get() == 0, "decrease must not reload retained regions");
+		}
+		try (RegionLoadManager manager = new RegionLoadManager()) {
 			manager.selectCenter(40, 40);
 			manager.mark(new RegionLoadManager.RegionKey(40, 40), RegionLoadManager.State.LOADED);
 			manager.checkNeighborsAsync(key -> true).get(2L, TimeUnit.SECONDS);

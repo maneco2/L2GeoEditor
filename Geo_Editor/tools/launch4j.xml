@@ -2,43 +2,39 @@
 <launch4jConfig>
   <dontWrapJar>false</dontWrapJar>
   <headerType>gui</headerType>
-  <jar>../build/GeoEditor.jar</jar>
-  <outfile>../build/GeoEditor.exe</outfile>
+  <jar>../Build/GeoEditor.jar</jar>
+  <outfile>../Build/GeoEditor.exe</outfile>
   <errTitle>GeoEditor</errTitle>
   <chdir>.</chdir>
   <priority>normal</priority>
   <downloadUrl>https://adoptium.net/</downloadUrl>
   <stayAlive>true</stayAlive>
   <restartOnCrash>false</restartOnCrash>
-  <icon>../src/assets/icon/geoeditor.ico</icon>
+  <icon>../src/main/resources/icon/geoeditor.ico</icon>
   <classPath>
-    <mainClass>com.GeoEditor</mainClass>
-    <cp>libs/*</cp>
+    <mainClass>com.geo.editor.GeoEditorApplication</mainClass>
+    <cp>libs/core/*.jar</cp>
+    <cp>libs/lwjgl/*.jar</cp>
   </classPath>
   <jre>
     <path>%JAVA_HOME%;%PATH%</path>
     <requiresJdk>false</requiresJdk>
     <requires64Bit>true</requires64Bit>
     <minVersion>25</minVersion>
-    <opt>-Djava.library.path=libs</opt>
+    <opt>--module-path=libs/javafx</opt>
+    <opt>--add-modules=javafx.controls</opt>
+    <opt>--enable-native-access=javafx.graphics,ALL-UNNAMED</opt>
+    <opt>-Djava.library.path=libs/javafx;libs/lwjgl</opt>
     <opt>-XX:+UseG1GC</opt>
-    <opt>-XX:G1PeriodicGCInterval=5000</opt>
-    <opt>-XX:MinHeapFreeRatio=10</opt>
-    <opt>-XX:MaxHeapFreeRatio=20</opt>
-    <opt>-XX:MaxRAMPercentage=75.0</opt>
-    <opt>--enable-native-access=ALL-UNNAMED</opt>
-    <opt>--add-exports=java.base/java.lang=ALL-UNNAMED</opt>
-    <opt>--add-exports=java.desktop/sun.awt=ALL-UNNAMED</opt>
-    <opt>--add-exports=java.desktop/sun.java2d=ALL-UNNAMED</opt>
   </jre>
   <versionInfo>
-    <fileVersion>2.0.3.41</fileVersion>
-    <txtFileVersion>2.0.3.41</txtFileVersion>
+    <fileVersion>2.0.4.31</fileVersion>
+    <txtFileVersion>2.0.4.31</txtFileVersion>
     <fileDescription>Lineage II Geodata Editor</fileDescription>
     <copyright>GNU General Public License v3 or later</copyright>
-    <productVersion>2.0.3.41</productVersion>
-    <txtProductVersion>2.0.3.41</txtProductVersion>
-    <productName>L2GeoEditor</productName>
+    <productVersion>2.0.4.31</productVersion>
+    <txtProductVersion>2.0.4.31</txtProductVersion>
+    <productName>GeoEditor</productName>
     <companyName>Maneco2</companyName>
     <internalName>GeoEditor</internalName>
     <originalFilename>GeoEditor.exe</originalFilename>

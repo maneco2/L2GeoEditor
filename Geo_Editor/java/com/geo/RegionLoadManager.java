@@ -14,6 +14,7 @@
  */
 package com.geo;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -133,6 +134,15 @@ public final class RegionLoadManager implements AutoCloseable {
 			_states.put(key, state);
 	}
 
+	/** Marks snapshots already owned by the resident cache without probing or loading them again. */
+	public synchronized void markLoaded(final Collection<RegionKey> keys) {
+		if (keys == null)
+			return;
+		for (final RegionKey key : keys)
+			if (_states.containsKey(key))
+				_states.put(key, State.LOADED);
+	}
+
 	/**
 	 * Checks neighboring files away from the Swing EDT. Results from an obsolete
 	 * center selection are discarded.
@@ -146,7 +156,10 @@ public final class RegionLoadManager implements AutoCloseable {
 				return CompletableFuture.completedFuture(null);
 			center = new RegionKey(_centerX, _centerY);
 			generation = _generation;
-			neighbors = _states.keySet().stream().filter(key -> !key.equals(center))
+			neighbors = _states.entrySet().stream()
+					.filter(entry -> !entry.getKey().equals(center)
+							&& entry.getValue() == State.UNLOADED)
+					.map(Map.Entry::getKey)
 					.sorted(Comparator.comparingInt(key -> distanceSquared(center, key)))
 					.toArray(RegionKey[]::new);
 			for (final RegionKey key : neighbors)
@@ -208,7 +221,8 @@ public final class RegionLoadManager implements AutoCloseable {
 				}
 				publishProgress("Preparing geodata", generation);
 			}
-			publishProgress("Finalizing region window", generation);
+			if (available.length > 0)
+				publishProgress("Finalizing region window", generation);
 		}, _availabilityExecutor);
 	}
 

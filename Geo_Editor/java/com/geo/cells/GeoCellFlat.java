@@ -17,7 +17,6 @@ package com.geo.cells;
 import com.geo.GeoCell;
 import com.geo.GeoEngine;
 import com.geo.blocks.GeoBlockFlat;
-import com.swing.FrameMain;
 
 /**
  * L2J source.
@@ -80,8 +79,6 @@ public final class GeoCellFlat extends GeoCell {
 			markModified();
 		getBlock().updateMinMaxHeight(_height, oldHeight);
 
-		if (FrameMain.getInstance().isSelectedGeoCell(this))
-			FrameMain.getInstance().setSelectedGeoCell(this);
 	}
 
 	/**
@@ -127,8 +124,6 @@ public final class GeoCellFlat extends GeoCell {
 			markModified();
 		getBlock().updateMinMaxHeight(_height, oldHeight);
 
-		if (FrameMain.getInstance().isSelectedGeoCell(this))
-			FrameMain.getInstance().setSelectedGeoCell(this);
 	}
 
 	/**
@@ -136,7 +131,5 @@ public final class GeoCellFlat extends GeoCell {
 	 */
 	@Override
 	public final void setNswe(final short nswe) {
-		if (FrameMain.getInstance().isSelectedGeoCell(this))
-			FrameMain.getInstance().setSelectedGeoCell(this);
 	}
 }

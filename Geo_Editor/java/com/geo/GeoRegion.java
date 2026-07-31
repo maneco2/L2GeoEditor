@@ -17,7 +17,6 @@ package com.geo;
 import com.geo.blocks.GeoBlockComplex;
 import com.geo.blocks.GeoBlockFlat;
 import com.geo.blocks.GeoBlockMultiLayer;
-import com.swing.DialogSave;
 import com.util.GeoByteBuffer;
 import com.util.GeoReader;
 import com.util.GeoStreamWriter;
@@ -36,6 +35,11 @@ import java.io.OutputStream;
  * @version 1.1
  */
 public final class GeoRegion {
+	@FunctionalInterface
+	public interface SaveProgress {
+		void updateProgressRegion(int progress, String blockName);
+	}
+
 	public static final byte getType(final GeoReader reader, final boolean l2j) {
 		if (l2j)
 			return reader.get();
@@ -275,6 +279,26 @@ public final class GeoRegion {
 		return _geoBlocks[blockX][blockY];
 	}
 
+	/** Creates an independent L2J representation of one block for edit history. */
+	public final GeoByteBuffer captureBlock(final int blockX, final int blockY) {
+		final GeoBlock block = _geoBlocks[blockX][blockY];
+		final GeoByteBuffer data = GeoByteBuffer.allocate(block.getRequiredCapacity(true));
+		block.writeTo(data, true);
+		data.clear();
+		return data;
+	}
+
+	/** Restores one block previously produced by {@link #captureBlock(int, int)}. */
+	public final void restoreCapturedBlock(final int blockX, final int blockY,
+			final GeoByteBuffer data) {
+		data.clear();
+		final GeoBlock previous = _geoBlocks[blockX][blockY];
+		previous.unload();
+		_geoBlocks[blockX][blockY] = readBlock(blockX, blockY, data, true);
+		_layerCountsDirty = true;
+		_modified = true;
+	}
+
 	public final void setBlock(final int geoX, final int geoY, final GeoBlock block) {
 		final int blockX = GeoEngine.getBlockXY(geoX);
 		final int blockY = GeoEngine.getBlockXY(geoY);
@@ -316,7 +340,7 @@ public final class GeoRegion {
 		_modified = !allDataEqual();
 	}
 
-	public final void saveTo(final OutputStream os, final boolean l2j, final DialogSave observ) throws IOException {
+	public final void saveTo(final OutputStream os, final boolean l2j, final SaveProgress observer) throws IOException {
 		if (!l2j) {
 			Util.writeByte(_regionX + 10, os);
 			Util.writeByte(_regionY + 10, os);
@@ -329,8 +353,9 @@ public final class GeoRegion {
 		for (int blockX = 0, blockY; blockX < GeoEngine.GEO_REGION_SIZE; blockX++) {
 			for (blockY = 0; blockY < GeoEngine.GEO_REGION_SIZE; blockY++) {
 				_geoBlocks[blockX][blockY].writeTo(writer, l2j);
-				observ.updateProgressRegion(blockX * GeoEngine.GEO_REGION_SIZE + blockY,
-						"[" + blockX + "-" + blockY + "]");
+				if (observer != null)
+					observer.updateProgressRegion(blockX * GeoEngine.GEO_REGION_SIZE + blockY,
+							"[" + blockX + "-" + blockY + "]");
 			}
 		}
 	}

@@ -16,14 +16,14 @@ package com.geo;
 
 /** Discrete square-region coverage used by auxiliary streaming. @author Maneco2 @version 1.0 */
 public final class RegionWindowPlan {
-	public static final int[] NEIGHBOR_OPTIONS = { 0, 8, 24, 48, 80, 120 };
+	public static final int[] NEIGHBOR_OPTIONS = { 8, 24, 48, 80, 120 };
 
 	private RegionWindowPlan() {
 	}
 
 	public static int normalizeNeighborCount(final int count) {
-		// Migrate the former 1..8 slider without unexpectedly disabling neighbors.
-		if (count > 0 && count < 8)
+		// Migrate former zero and 1..8 values without disabling the resident window.
+		if (count <= 8)
 			return 8;
 		int nearest = NEIGHBOR_OPTIONS[0];
 		int distance = Math.abs(count - nearest);
@@ -39,14 +39,22 @@ public final class RegionWindowPlan {
 
 	public static int radiusForNeighborCount(final int count) {
 		final int normalized = normalizeNeighborCount(count);
-		for (int radius = 0; radius < NEIGHBOR_OPTIONS.length; radius++)
+		for (int radius = 1; radius <= NEIGHBOR_OPTIONS.length; radius++)
 			if (((radius * 2 + 1) * (radius * 2 + 1)) - 1 == normalized)
 				return radius;
 		throw new IllegalArgumentException("Unsupported neighbor count: " + count);
 	}
 
+	public static int optionIndexForNeighborCount(final int count) {
+		final int normalized = normalizeNeighborCount(count);
+		for (int index = 0; index < NEIGHBOR_OPTIONS.length; index++)
+			if (NEIGHBOR_OPTIONS[index] == normalized)
+				return index;
+		throw new IllegalArgumentException("Unsupported neighbor count: " + count);
+	}
+
 	public static int neighborCountForRadius(final int radius) {
-		if (radius < 0 || radius >= NEIGHBOR_OPTIONS.length)
+		if (radius < 1 || radius > NEIGHBOR_OPTIONS.length)
 			throw new IllegalArgumentException("Unsupported radius: " + radius);
 		return ((radius * 2 + 1) * (radius * 2 + 1)) - 1;
 	}

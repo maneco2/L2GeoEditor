@@ -19,7 +19,6 @@ import com.geo.GeoCell;
 import com.geo.GeoEngine;
 import com.geo.GeoRegion;
 import com.geo.cells.GeoCellCM;
-import com.jogl.GLDisplay;
 import com.util.GeoReader;
 import com.util.GeoWriter;
 
@@ -189,16 +188,10 @@ public final class GeoBlockComplex extends GeoBlock {
 	public final void updateMinMaxHeight(final short newHeight, final short oldHeight) {
 		if (newHeight > _maxHeight) {
 			_maxHeight = newHeight;
-			GLDisplay.getInstance().getTerrain().checkNeedUpdateVBO(false, true);
 		} else if (newHeight < _minHeight) {
 			_minHeight = newHeight;
-			GLDisplay.getInstance().getTerrain().checkNeedUpdateVBO(true, false);
 		} else if (oldHeight == _maxHeight || oldHeight == _minHeight) {
-			final int oldMinHeight = _minHeight;
-			final int oldMaxHeight = _maxHeight;
 			calcMaxMinHeight();
-			GLDisplay.getInstance().getTerrain().checkNeedUpdateVBO(_minHeight != oldMinHeight,
-					_maxHeight != oldMaxHeight);
 		}
 	}
 

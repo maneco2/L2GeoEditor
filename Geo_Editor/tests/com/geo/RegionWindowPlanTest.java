@@ -17,10 +17,13 @@ package com.geo;
 /** @author Maneco2 @version 1.0 */
 public final class RegionWindowPlanTest {
 	public static void main(final String[] args) {
-		for (int radius = 0; radius <= 5; radius++) {
+		for (int radius = 1; radius <= 5; radius++) {
 			final int count = RegionWindowPlan.neighborCountForRadius(radius);
 			check(RegionWindowPlan.radiusForNeighborCount(count) == radius, "radius " + radius);
+			check(RegionWindowPlan.optionIndexForNeighborCount(count) == radius - 1,
+					"option index " + radius);
 		}
+		check(RegionWindowPlan.normalizeNeighborCount(0) == 8, "zero migrates to eight");
 		check(RegionWindowPlan.normalizeNeighborCount(2) == 8, "legacy positive value migrates to eight");
 		check(RegionWindowPlan.normalizeNeighborCount(7) == 8, "nearest eight");
 		check(!RegionWindowPlan.isOutsideWindow(19, 13, 20, 13, 2), "inner region");

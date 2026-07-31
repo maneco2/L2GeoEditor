@@ -14,12 +14,11 @@
  */
 package com.geo;
 
-import com.Config;
+import com.geo.core.GeoCoordinates;
 import com.exceptions.GeoDataNotFoundException;
 import com.exceptions.GeoDataNotLoadedException;
 import com.exceptions.GeoFileLoadException;
 import com.exceptions.GeoFileNotFoundException;
-import com.jogl.GLDisplay;
 import com.util.GeoReader;
 import com.util.GeoStreamReader;
 
@@ -41,6 +40,18 @@ import java.util.regex.Pattern;
  * @version 1.1
  */
 public final class GeoEngine {
+	private static volatile File geodataDirectory = new File("./data/geodata");
+
+	public static void setGeodataDirectory(final File directory) {
+		if (directory == null)
+			throw new IllegalArgumentException("Geodata directory cannot be null.");
+		geodataDirectory = directory;
+	}
+
+	public static File getGeodataDirectory() {
+		return geodataDirectory;
+	}
+
 	public static final FileFilter OFF_GEO_FILE_FILTER = new FileFilter() {
 		/**
 		 * @see java.io.FileFilter#accept(java.io.File)
@@ -121,35 +132,35 @@ public final class GeoEngine {
 	public static final int GEOY_MAX = ((MAP_MAX_Y - MAP_MIN_Y) >> CELL_SHIFT);
 
 	public static final int getGeoX(final int x) {
-		return (x - MAP_MIN_X) >> CELL_SHIFT;
+		return GeoCoordinates.geoXFromWorld(x);
 	}
 
 	public static final int getGeoY(final int y) {
-		return (y - MAP_MIN_Y) >> CELL_SHIFT;
+		return GeoCoordinates.geoYFromWorld(y);
 	}
 
 	public static final int getWorldX(final int geoX) {
-		return (geoX << CELL_SHIFT) + MAP_MIN_X;
+		return GeoCoordinates.worldXFromGeo(geoX);
 	}
 
 	public static final int getWorldY(final int geoY) {
-		return (geoY << CELL_SHIFT) + MAP_MIN_Y;
+		return GeoCoordinates.worldYFromGeo(geoY);
 	}
 
 	public static final int getBlockXY(final int geoXY) {
-		return (geoXY >> 3) % GEO_REGION_SIZE;
+		return GeoCoordinates.blockFromGeo(geoXY);
 	}
 
 	public static final int getCellXY(final int geoXY) {
-		return geoXY % GEO_BLOCK_SHIFT;
+		return GeoCoordinates.cellFromGeo(geoXY);
 	}
 
 	public static final int getRegionXY(final int geoXY) {
-		return geoXY >> GEO_BLOCK_REGION_SHIFT;
+		return GeoCoordinates.regionFromGeo(geoXY);
 	}
 
 	public static final int getGeoXY(final int regionXY, final int blockXY) {
-		return (regionXY << GEO_BLOCK_REGION_SHIFT) + (blockXY << 3);
+		return GeoCoordinates.geoFromRegionBlock(regionXY, blockXY);
 	}
 
 	public static final int getBlockIndex(final int blockX, final int blockY) {
@@ -274,13 +285,13 @@ public final class GeoEngine {
 		regionX += 10;
 		regionY += 10;
 		if (l2j) {
-			return new File(Config.PATH_TO_GEO_FILES, regionX + "_" + regionY + ".l2j").isFile();
+			return new File(geodataDirectory, regionX + "_" + regionY + ".l2j").isFile();
 		}
 		return searchL2OffGeoFile(regionX, regionY) != null;
 	}
 
 	public static final File searchL2OffGeoFile(final int regionX, final int regionY) {
-		final File geoFile = new File(Config.PATH_TO_GEO_FILES);
+		final File geoFile = geodataDirectory;
 		if (!geoFile.isDirectory())
 			return null;
 
@@ -340,8 +351,6 @@ public final class GeoEngine {
 	}
 
 	public final synchronized void unload() {
-		if (_activeRegion != null)
-			GeoBlockSelector.getInstance().unload();
 		for (final GeoRegion region : _loadedRegions.values())
 			region.unload();
 		_loadedRegions.clear();
@@ -386,14 +395,14 @@ public final class GeoEngine {
 	}
 
 	public final void reloadGeo(final int regionX, final int regionY, final boolean l2j) throws Exception {
-		final File file = l2j ? new File(Config.PATH_TO_GEO_FILES, (regionX + 10) + "_" + (regionY + 10) + ".l2j")
+		final File file = l2j ? new File(geodataDirectory, (regionX + 10) + "_" + (regionY + 10) + ".l2j")
 				: searchL2OffGeoFile((regionX + 10), (regionY + 10));
 		reloadGeo(regionX, regionY, l2j, file);
 	}
 
 	/**
 	 * Activates a cached neighbor when possible. Streaming-window ownership stays
-	 * with FrameMain so moving inside an anchored window does not recenter it.
+	 * with the caller so moving inside an anchored window does not recenter it.
 	 */
 	public final void activateRegion(final int regionX, final int regionY) throws Exception {
 		final RegionLoadManager.RegionKey key = new RegionLoadManager.RegionKey(regionX, regionY);
@@ -403,7 +412,7 @@ public final class GeoEngine {
 			cached = _loadedRegions.get(key);
 		}
 		if (cached == null) {
-			file = new File(Config.PATH_TO_GEO_FILES, (regionX + 10) + "_" + (regionY + 10) + ".l2j");
+			file = new File(geodataDirectory, (regionX + 10) + "_" + (regionY + 10) + ".l2j");
 			if (!file.isFile())
 				throw new GeoFileNotFoundException(file, true);
 		} else {
@@ -413,7 +422,6 @@ public final class GeoEngine {
 		GeoRegion discarded = null;
 		synchronized (this) {
 			if (_activeRegion != null && _activeRegion != cached) {
-				GeoBlockSelector.getInstance().unload();
 				// Clean centers remain useful as neighbors in the next overlapping
 				// window. Only a deliberately discarded modified center is released.
 				if (_activeRegion.isModified()) {
@@ -511,9 +519,6 @@ public final class GeoEngine {
 	private CompletableFuture<Void> queueRegionDiscard(final GeoRegion region) {
 		if (region == null)
 			return CompletableFuture.completedFuture(null);
-		final GLDisplay display = GLDisplay.getInstance();
-		if (display != null)
-			return display.queueRegionDiscard(region);
 		final long start = System.nanoTime();
 		region.releaseForDiscard();
 		_lastRegionDiscardMicros = (System.nanoTime() - start) / 1_000L;
@@ -524,7 +529,7 @@ public final class GeoEngine {
 		return loadRegionIntoCache(regionX, regionY, true);
 	}
 
-	/** Prepares the next active region without blocking the Swing event thread. */
+	/** Prepares the next active region without blocking the UI thread. */
 	public final boolean prepareTransitionRegion(final int regionX, final int regionY) {
 		return loadRegionIntoCache(regionX, regionY, false);
 	}
@@ -539,7 +544,7 @@ public final class GeoEngine {
 				return false;
 		}
 
-		final File file = new File(Config.PATH_TO_GEO_FILES, (regionX + 10) + "_" + (regionY + 10) + ".l2j");
+		final File file = new File(geodataDirectory, (regionX + 10) + "_" + (regionY + 10) + ".l2j");
 		if (!file.isFile())
 			return false;
 		try {

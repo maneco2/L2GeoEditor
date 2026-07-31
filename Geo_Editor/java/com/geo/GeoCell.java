@@ -14,8 +14,6 @@
  */
 package com.geo;
 
-import com.entity.SelectionState;
-
 /**
  * L2J source.
  *
@@ -27,23 +25,13 @@ public abstract class GeoCell {
 	public static final GeoCell[] EMPTY_ARRAY = new GeoCell[0];
 
 	private GeoBlock _block;
-	private SelectionState _selectionState;
 
 	public GeoCell(final GeoBlock block) {
 		_block = block;
-		_selectionState = SelectionState.NORMAL;
 	}
 
 	public final GeoBlock getBlock() {
 		return _block;
-	}
-
-	public final SelectionState getSelectionState() {
-		return _selectionState;
-	}
-
-	public final void setSelectionState(final SelectionState selectionState) {
-		_selectionState = selectionState;
 	}
 
 	public final float getRenderX() {

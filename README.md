@@ -3,118 +3,123 @@
 </p>
 
 <p align="center">
-  A desktop editor for inspecting, visualizing and modifying Lineage II geodata.
+  Editor desktop para inspecionar, visualizar e modificar geodata de Lineage II.
 </p>
 
 <p align="center">
   <img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white">
-  <img alt="JOGL" src="https://img.shields.io/badge/Renderer-JOGL-00AEEF">
-  <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows">
-  <img alt="License" src="https://img.shields.io/badge/License-GPLv3-blue">
+  <img alt="JavaFX 25" src="https://img.shields.io/badge/UI-JavaFX%2025-1f6feb">
+  <img alt="LWJGL 3" src="https://img.shields.io/badge/Renderer-LWJGL%203-00AEEF">
+  <img alt="Windows" src="https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows">
+  <img alt="GPLv3" src="https://img.shields.io/badge/License-GPLv3-blue">
 </p>
 
-## Overview
+## Visao geral
 
-GeoEditor provides a visual workflow for working with Lineage II geodata. It renders terrain through JOGL, supports the L2J binary geodata format and keeps the active region editable while neighboring regions are streamed incrementally for context.
+GeoEditor 2.0.4.31 oferece um fluxo visual para trabalhar com geodata no formato
+binario L2J. A interface usa JavaFX e a visualizacao 3D usa LWJGL/OpenGL. A
+regiao ativa permanece editavel enquanto regioes vizinhas sao carregadas de
+forma incremental para fornecer contexto.
 
-The project focuses on predictable editing, responsive navigation and compatibility with existing L2J geodata.
+## Recursos
 
-## Features
+- Visualizacao 3D de blocos `FLAT`, `COMPLEX` e `MULTILAYER`.
+- Full Map com streaming incremental de regioes vizinhas.
+- Grades circular e quadrada configuraveis.
+- Selecao e edicao de blocos, camadas, alturas e bits NSWE.
+- Conversao de blocos, restauracao, Undo/Redo e historico.
+- Salvamento e recarga do formato L2J.
+- Minimap, seletor de mapas, temas e estilos de ceu.
+- Metricas de FPS, frame time, heap, memoria residente e VRAM.
+- Testes deterministas para parsing, serializacao e transicoes de estado.
 
-- 3D geodata visualization using VBOs and GLSL shaders.
-- Support for `FLAT`, `COMPLEX` and `MULTILAYER` blocks.
-- Incremental Full Map streaming of neighboring regions.
-- Circular selectable geodata grid limited to the active region.
-- Region minimap with player marker and transition fade.
-- Map selector synchronized with the active region and camera.
-- Block conversion, layer editing, restoration and saving.
-- Runtime performance and memory instrumentation.
-- Parallel block selection using the available processors.
-- Deterministic tests for parsing, geometry and state transitions.
+## Requisitos
 
-## Requirements
+- Windows 10 ou superior, x64.
+- OpenJDK 25 x64 no `PATH`.
+- PowerShell 5.1 ou superior.
+- Driver grafico compativel com OpenGL.
 
-- Windows 10 or newer.
-- OpenJDK 25 available through `JAVA_HOME` or `PATH`.
-- PowerShell 5.1 or newer.
-- An OpenGL-compatible graphics driver.
-- Launch4j 3.50 extracted locally to `Geo_Editor/tools/launch4j` when generating the portable EXE.
+## Dependencias locais
 
-JOGL and GlueGen dependencies required by the editor are provided in `Geo_Editor/libs`.
-The local Launch4j toolchain is intentionally ignored by Git and is not part of the application distribution.
-
-## Build
-
-Generate the portable Windows executable from `Geo_Editor`:
+Execute a partir de `Geo_Editor`:
 
 ```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\setup-javafx.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\setup-lwjgl.ps1
+```
+
+Para gerar o EXE, extraia o Launch4j 3.50 em `tools\launch4j`. OpenJFX,
+LWJGL e Launch4j sao dependencias baixaveis locais e nao pertencem ao source
+versionado.
+
+## Build e testes
+
+Para executar a validacao e gerar o EXE com um unico comando:
+
+```bat
+Geo_Editor\BuildEditor.bat
+```
+
+O arquivo executa a suite deterministica e somente depois gera a distribuicao.
+Os comandos separados para desenvolvimento continuam disponiveis:
+
+```powershell
+cd .\Geo_Editor
+
+# Suite deterministica
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\test-fast.ps1
+
+# Compilacao e execucao do editor
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\editor-app.ps1
+
+# Distribuicao Windows
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\package-exe.ps1
 ```
 
-The build generates:
+A distribuicao e gerada somente em:
 
 ```text
-Geo_Editor/build/GeoEditor.exe
+Geo_Editor/Build/
+  GeoEditor.exe
+  configs/
+  data/
+  libs/
 ```
 
-Application code is bundled into `GeoEditor.exe`. Runtime libraries, configuration and data remain external. Existing files under `build/data/geodata` are always preserved.
+`Build/` e regeneravel e nao deve ser versionada. O pacote usa o Java 25
+instalado no sistema; nenhuma JRE e incorporada.
 
-## Run
+## Geodata local
 
-After packaging:
+O diretorio `Geo_Editor/src/assets/geodata/` pode conter arquivos `.l2j`
+temporarios para testes completos. O empacotador os copia para
+`Build/data/geodata/`.
 
-```powershell
-cd .\build
-.\GeoEditor.exe
-```
+Arquivos `.l2j` reais nao devem ser enviados ao repositorio. Antes de qualquer
+envio, remova-os e preserve apenas `src/assets/geodata/README.md`.
 
-The runtime geodata directory is:
-
-```text
-Geo_Editor/build/data/geodata
-```
-
-## Tests
-
-Run the complete deterministic test suite:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\test-fast.ps1
-```
-
-The suite covers:
-
-- Geodata coordinates, heights, NSWE and anti-corner-cut behavior.
-- Binary parsing and serialization of all supported block types.
-- Complete 65,536-block region reads.
-- Region streaming and cancellation state.
-- Map selector state and world-map transformations.
-- Circular cell-grid masking and performance metrics.
-
-## Project structure
+## Estrutura
 
 ```text
 Geo_Editor/
-├── java/          Java source code
-├── tests/         Deterministic Java tests
-├── src/assets/    Shaders, icons and terrain textures
-├── libs/          JOGL, GlueGen and native libraries
-├── tools/         Build, test and packaging scripts
-└── build.xml      Ant build definition
+  java/                 core de formato e compatibilidade ainda utilizado
+  src/main/java/        aplicacao JavaFX/LWJGL e core promovido
+  src/main/resources/   icones, imagens e texturas de runtime
+  src/assets/           banner documental e geodata local temporaria
+  tests/                suite Java deterministica
+  tools/                build, testes, pacote e diagnosticos
+  docs/                 arquitetura, auditorias e instrucoes detalhadas
+  Build/                saida local regeneravel, nunca versionada
 ```
 
-## Geodata safety
+Consulte [setup e build](Geo_Editor/docs/build-setup.md) e
+[dependencias de runtime](Geo_Editor/docs/runtime-dependencies.md) para detalhes.
 
-- The active region is the only editable region.
-- Neighboring Full Map regions are loaded for visualization.
-- Modified regions retain the confirmation flow before switching.
-- Circular grid masking never changes neighboring region data.
+## Licenca e creditos
 
-## License
+GeoEditor e distribuido sob a GNU General Public License, versao 3 ou posterior.
+Veja [LICENSE.md](LICENSE.md) e preserve as atribuicoes em
+`Geo_Editor/src/main/resources/textures/sky/ATTRIBUTION.md`.
 
-GeoEditor is distributed under the terms of the GNU General Public License, version 3 or any later version. See [LICENSE.md](LICENSE.md).
-
-## Credits
-
-Original author: **Forsaiken (Patrick)**.
-Maintained and modernized by **Maneco2**, with thanks for the original work.
+Autor original: **Forsaiken (Patrick)**. Mantido e modernizado por **Maneco2**.

@@ -19,7 +19,6 @@ import com.geo.GeoCell;
 import com.geo.GeoEngine;
 import com.geo.GeoRegion;
 import com.geo.cells.GeoCellFlat;
-import com.jogl.GLDisplay;
 import com.util.GeoReader;
 import com.util.GeoWriter;
 
@@ -120,8 +119,7 @@ public final class GeoBlockFlat extends GeoBlock {
 
 	@Override
 	public final void updateMinMaxHeight(final short newHeight, final short oldHeight) {
-		if (newHeight != oldHeight)
-			GLDisplay.getInstance().getTerrain().checkNeedUpdateVBO(true, true);
+		// Flat blocks derive both values directly from their single cell.
 	}
 
 	@Override

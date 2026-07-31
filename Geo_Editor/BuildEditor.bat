@@ -1,22 +1,41 @@
 @echo off
-chcp 65001 >nul
-title GeoEditor - Fast Build
-set "ROOT_DIR=%~dp0"
-cd /d "%ROOT_DIR%"
+setlocal
+
+cd /d "%~dp0"
+
+echo ============================================================
+echo GeoEditor 2.0.4.31 - Build completa
+echo ============================================================
+
+where java >nul 2>&1
+if errorlevel 1 goto :java_missing
+
+where javac >nul 2>&1
+if errorlevel 1 goto :java_missing
 
 echo.
-echo ========================================
-echo          GEOEDITOR - FAST BUILD
-echo ========================================
-echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%tools\build-fast.ps1" %*
-if errorlevel 1 (
-    echo.
-    echo [ERROR] BUILD FAILED.
-    pause
-    exit /b 1
-)
+echo [1/2] Executando testes...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\test-fast.ps1"
+if errorlevel 1 goto :failed
 
 echo.
-echo [OK] BUILD COMPLETED SUCCESSFULLY.
-pause
+echo [2/2] Gerando Build\GeoEditor.exe...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\package-exe.ps1"
+if errorlevel 1 goto :failed
+
+echo.
+echo ============================================================
+echo BUILD CONCLUIDA: %~dp0Build\GeoEditor.exe
+echo ============================================================
+exit /b 0
+
+:java_missing
+echo.
+echo ERRO: Java JDK 25 nao foi encontrado no PATH.
+echo Instale ou configure Java, javac e jar antes de continuar.
+exit /b 1
+
+:failed
+echo.
+echo ERRO: a build foi interrompida. Verifique as mensagens acima.
+exit /b 1
