@@ -20,8 +20,6 @@ $excludedJavaFxDlls = @('fxplugins.dll', 'glib-lite.dll', 'gstreamer-lite.dll',
     'jfxmedia.dll', 'jfxwebkit.dll')
 $appData = Join-Path $appBuild 'data'
 $appConfigs = Join-Path $appBuild 'configs'
-$sourceGeodata = Join-Path $root 'src\assets\geodata'
-$packagedGeodata = Join-Path $appData 'geodata'
 $obsoleteVisualMinimap = Join-Path $appBuild '.visual-minimap.xml'
 $manifest = Join-Path $root 'src\main\resources\META-INF\MANIFEST.MF'
 $assets = Join-Path $root 'src\main\resources'
@@ -105,7 +103,7 @@ if (Test-Path -LiteralPath $obsoleteVisualMinimap) {
 }
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-    (Join-Path $PSScriptRoot 'editor-app.ps1')
+    (Join-Path $PSScriptRoot 'editor-app.ps1') -KeepStaging
 if ($LASTEXITCODE -ne 0) {
     throw "GeoEditor compilation failed with exit code $LASTEXITCODE."
 }
@@ -146,25 +144,30 @@ foreach ($entry in $assetEntries) {
         Copy-Item -LiteralPath $entry.FullName -Destination $destination -Force
     }
 }
-if (Test-Path -LiteralPath $sourceGeodata) {
-    New-Item -ItemType Directory -Path $packagedGeodata -Force | Out-Null
-    Get-ChildItem -LiteralPath $sourceGeodata -File -Recurse | ForEach-Object {
-        $relative = $_.FullName.Substring(
-            [System.IO.Path]::GetFullPath($sourceGeodata).TrimEnd('\').Length + 1)
-        $target = Join-Path $packagedGeodata $relative
-        New-Item -ItemType Directory -Path (Split-Path -Parent $target) `
-            -Force | Out-Null
-        Copy-Item -LiteralPath $_.FullName -Destination $target -Force
-    }
-}
 
 & jar --create --file $appJar --manifest $manifest -C $appClasses .
 if ($LASTEXITCODE -ne 0) {
     throw "GeoEditor JAR creation failed with exit code $LASTEXITCODE."
 }
-& java -cp "$launch4jJar;$launch4jLib" net.sf.launch4j.Main $launch4jConfig
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $appExe)) {
-    throw "GeoEditor Launch4j packaging failed with exit code $LASTEXITCODE."
+$launch4jStdout = Join-Path $staging 'launch4j.stdout.log'
+$launch4jStderr = Join-Path $staging 'launch4j.stderr.log'
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    & java -cp "$launch4jJar;$launch4jLib" net.sf.launch4j.Main $launch4jConfig `
+        1> $launch4jStdout 2> $launch4jStderr
+    $launch4jExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $previousErrorAction
+}
+if (Test-Path -LiteralPath $launch4jStdout) {
+    Get-Content -LiteralPath $launch4jStdout | Write-Output
+}
+if (Test-Path -LiteralPath $launch4jStderr) {
+    Get-Content -LiteralPath $launch4jStderr | Write-Output
+}
+if ($launch4jExitCode -ne 0 -or -not (Test-Path -LiteralPath $appExe)) {
+    throw "GeoEditor Launch4j packaging failed with exit code $launch4jExitCode."
 }
 
 $version = (Get-Item -LiteralPath $appExe).VersionInfo.ProductVersion

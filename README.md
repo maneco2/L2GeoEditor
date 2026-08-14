@@ -40,7 +40,7 @@ forma incremental para fornecer contexto.
 - PowerShell 5.1 ou superior.
 - Driver grafico compativel com OpenGL.
 
-## Dependencias locais
+## Dependencias de build versionadas
 
 Execute a partir de `Geo_Editor`:
 
@@ -49,9 +49,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\setup-javafx.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\setup-lwjgl.ps1
 ```
 
-Para gerar o EXE, extraia o Launch4j 3.50 em `tools\launch4j`. OpenJFX,
-LWJGL e Launch4j sao dependencias baixaveis locais e nao pertencem ao source
-versionado.
+As versões necessárias de OpenJFX, LWJGL e Launch4j ficam em
+`Geo_Editor/tools` para permitir uma build reproduzível. Os scripts de setup
+continuam disponíveis para recuperar essas dependências em um checkout limpo.
 
 ## Build e testes
 
@@ -92,12 +92,12 @@ instalado no sistema; nenhuma JRE e incorporada.
 
 ## Geodata local
 
-O diretorio `Geo_Editor/src/assets/geodata/` pode conter arquivos `.l2j`
-temporarios para testes completos. O empacotador os copia para
-`Build/data/geodata/`.
+O fixture local `Geo_Editor/src/main/resources/geodata/23_18.l2j` e usado pelos
+testes deterministas e pelo fluxo de validacao. O empacotador o copia para
+`Build/data/geodata/` quando o pacote e gerado.
 
-Arquivos `.l2j` reais nao devem ser enviados ao repositorio. Antes de qualquer
-envio, remova-os e preserve apenas `src/assets/geodata/README.md`.
+Arquivos `.l2j` continuam ignorados pelo `.gitignore`; antes de publicar,
+preserve somente os dados de teste autorizados para o repositorio privado.
 
 ## Estrutura
 
@@ -106,15 +106,10 @@ Geo_Editor/
   java/                 core de formato e compatibilidade ainda utilizado
   src/main/java/        aplicacao JavaFX/LWJGL e core promovido
   src/main/resources/   icones, imagens e texturas de runtime
-  src/assets/           banner documental e geodata local temporaria
   tests/                suite Java deterministica
   tools/                build, testes, pacote e diagnosticos
-  docs/                 arquitetura, auditorias e instrucoes detalhadas
   Build/                saida local regeneravel, nunca versionada
 ```
-
-Consulte [setup e build](Geo_Editor/docs/build-setup.md) e
-[dependencias de runtime](Geo_Editor/docs/runtime-dependencies.md) para detalhes.
 
 ## Licenca e creditos
 

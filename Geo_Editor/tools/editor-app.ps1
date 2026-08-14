@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
 	[switch]$Run,
+	[switch]$KeepStaging,
 	[switch]$SmokeTest,
 	[switch]$StartupSmokeTest,
 	[switch]$ConfigSmokeTest,
@@ -66,7 +67,7 @@ New-Item -ItemType Directory -Path $appClasses -Force | Out-Null
 
 try {
 $coreSources = Get-GeoEditorCoreSourceFiles -Root $root
-& javac -encoding UTF-8 --release 25 -d $coreClasses $coreSources
+& javac -encoding UTF-8 -Xlint:unchecked --release 25 -d $coreClasses $coreSources
 if ($LASTEXITCODE -ne 0) {
     throw "Core compilation failed with exit code $LASTEXITCODE."
 }
@@ -78,7 +79,7 @@ if ($LASTEXITCODE -ne 0) {
 $appSources = @(Get-ChildItem -LiteralPath $appSourceRoot -Filter '*.java' -Recurse |
     Select-Object -ExpandProperty FullName)
 $compileClassPath = "$coreJar;$(Join-Path $lwjglPath '*')"
-& javac -encoding UTF-8 --release 25 --module-path $modulePath `
+& javac -encoding UTF-8 -Xlint:unchecked --release 25 --module-path $modulePath `
     --add-modules javafx.controls -cp $compileClassPath `
     -d $appClasses $appSources
 if ($LASTEXITCODE -ne 0) {
@@ -219,7 +220,7 @@ if ($executeApplication) {
 }
 }
 finally {
-	if ($executeApplication -and (Test-Path -LiteralPath $staging)) {
+	if (-not $KeepStaging -and (Test-Path -LiteralPath $staging)) {
 		Remove-Item -LiteralPath $staging -Recurse -Force
 	}
 }

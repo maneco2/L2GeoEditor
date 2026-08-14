@@ -19,31 +19,34 @@ import java.util.HexFormat;
 
 /** Read-only coordinate, height and NSWE fixtures from a real L2J region. */
 public final class RealGeodataFixtureTest {
-	private static final File REGION_FILE = new File("Build/data/geodata/22_22.l2j");
-	private static final long EXPECTED_FILE_SIZE = 8_210_356L;
+	private static final String REGION_NAME = "23_18";
+	private static final File REGION_FILE = new File(System.getProperty("geoeditor.realGeodata",
+			"src/main/resources/geodata/23_18.l2j"));
+	private static final long EXPECTED_FILE_SIZE = 11_065_818L;
 	private static final String EXPECTED_SHA256 =
-			"8CC9CFF435EB6899C8D0C897473A6A904663E70C860D2C19F698A3220B51B733";
+			"F9FDD9A44BF0DA1FB4C54D7B8FCE1D18FD717E57717D3DDAF82CE226A217C656";
 	private static final Fixture[] FIXTURES = {
-			new Fixture(25704, 25663, -3210, 83584, 148464, 141, 135, 0, 7, 2, 1, -3400, 15),
-			new Fixture(25600, 25600, 0, 81920, 147456, 128, 128, 0, 0, 1, 1, -3176, 7),
-			new Fixture(24576, 24576, 0, 65536, 131072, 0, 0, 0, 0, 1, 1, -3720, 15),
-			new Fixture(26623, 26623, 0, 98288, 163824, 255, 255, 7, 7, 0, 1, -4120, 15)
+			new Fixture(26624, 16384, 98304, 0, 0, 0, 0, 0, 1, 1, 0, -3696, 15),
+			new Fixture(26625, 16385, 98320, 16, 0, 0, 1, 1, 1, 1, 0, -3696, 15),
+			new Fixture(27648, 17408, 114688, 16384, 128, 128, 0, 0, 2, 11, 0, -5096, 15),
+			new Fixture(28671, 18431, 131056, 32752, 255, 255, 7, 7, 0, 1, 0, -3720, 15)
 	};
 
 	public static void main(final String[] args) throws Exception {
 		if (!REGION_FILE.isFile()) {
-			System.out.println("RealGeodataFixtureTest skipped - local 22_22.l2j not found");
+			System.out.println("RealGeodataFixtureTest skipped - local " + REGION_NAME + ".l2j not found");
 			return;
 		}
 		if (REGION_FILE.length() != EXPECTED_FILE_SIZE
 				|| !sha256(REGION_FILE).equals(EXPECTED_SHA256)) {
-			System.out.println("RealGeodataFixtureTest skipped - local 22_22.l2j is not the known fixture");
+			System.out.println("RealGeodataFixtureTest skipped - local " + REGION_NAME
+					+ ".l2j is not the known fixture");
 			return;
 		}
 		final GeoRegion region;
 		try (FileInputStream input = new FileInputStream(REGION_FILE);
 				BufferedInputStream buffered = new BufferedInputStream(input)) {
-			region = new GeoRegion(12, 12, GeoStreamReader.wrap(buffered), true, REGION_FILE);
+			region = new GeoRegion(13, 8, GeoStreamReader.wrap(buffered), true, REGION_FILE);
 		}
 		try {
 			for (final Fixture fixture : FIXTURES)
@@ -55,7 +58,7 @@ public final class RealGeodataFixtureTest {
 	}
 
 	private static void validate(final GeoRegion region, final Fixture fixture) {
-		final GeoCell cell = region.nGetCell(fixture.geoX(), fixture.geoY(), fixture.worldZ());
+		final GeoCell cell = region.nGetCellByLayer(fixture.geoX(), fixture.geoY(), fixture.layer());
 		check(GeoEngine.getWorldX(fixture.geoX()) == fixture.worldX(), "world X");
 		check(GeoEngine.getWorldY(fixture.geoY()) == fixture.worldY(), "world Y");
 		check(GeoEngine.getGeoX(fixture.worldX()) == fixture.geoX(), "geo X round trip");
@@ -84,7 +87,7 @@ public final class RealGeodataFixtureTest {
 			throw new AssertionError("Real geodata fixture mismatch: " + description);
 	}
 
-	private record Fixture(int geoX, int geoY, int worldZ, int worldX, int worldY,
-			int blockX, int blockY, int cellX, int cellY, int type, int layers, int height, int nswe) {
+	private record Fixture(int geoX, int geoY, int worldX, int worldY, int blockX, int blockY,
+			int cellX, int cellY, int type, int layers, int layer, int height, int nswe) {
 	}
 }

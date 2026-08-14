@@ -12,7 +12,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.ArrayDeque;
-import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -756,7 +755,7 @@ public final class GeoEditorApplication extends Application {
 		final float configuredYaw = camera.rotationY();
 		final File outputDirectory = new File(System.getProperty(
 				"geoeditor.skyStyleOutput",
-				"tools/sky-comparison-2.0.3.94"));
+				"Build/diagnostics/sky-comparison"));
 		if (!outputDirectory.isDirectory() && !outputDirectory.mkdirs())
 			throw new IllegalStateException("Unable to create sky style output directory.");
 		final String[] names = { "Black", "Deep Navy", "Milky Way",
@@ -1923,68 +1922,6 @@ public final class GeoEditorApplication extends Application {
 								+ Math.round(camera.z()) + ",ROT:"
 								+ camera.rotationX() + "," + camera.rotationY());
 				});
-	}
-
-	@SuppressWarnings("unused")
-	private void selectMapLegacyPreview() {
-		final File directory = geodataRoot;
-		final File[] files = directory.listFiles((parent, name) ->
-				name.toLowerCase().endsWith(".l2j"));
-		if (files == null || files.length == 0) {
-			showError("No geodata regions were found in " + directory);
-			return;
-		}
-		Arrays.sort(files, Comparator.comparing(File::getName));
-		final Dialog<File> dialog = new Dialog<>();
-		dialog.initOwner(stage);
-		dialog.setTitle("Select Map");
-		dialog.setHeaderText("Choose a real geodata region");
-		dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-
-		final ListView<File> regions =
-				new ListView<>(FXCollections.observableArrayList(files));
-		regions.setPrefWidth(190);
-		regions.setCellFactory(view -> new ListCell<>() {
-			@Override
-			protected void updateItem(final File item, final boolean empty) {
-				super.updateItem(item, empty);
-				setText(empty || item == null ? null
-						: item.getName().replaceFirst("(?i)\\.l2j$", ""));
-			}
-		});
-		final ImageView preview = new ImageView();
-		preview.setFitWidth(430);
-		preview.setFitHeight(430);
-		preview.setPreserveRatio(true);
-		final Label previewName = uiLabel("Select a region");
-		final VBox previewBox = new VBox(8, preview, previewName);
-		previewBox.setAlignment(Pos.CENTER);
-		previewBox.setPadding(new Insets(8));
-		final BorderPane content = new BorderPane();
-		content.setLeft(regions);
-		content.setCenter(previewBox);
-		BorderPane.setMargin(regions, new Insets(8));
-		dialog.getDialogPane().setContent(content);
-		dialog.getDialogPane().setPrefSize(680, 540);
-
-		regions.getSelectionModel().selectedItemProperty().addListener(
-				(observable, previous, selected) -> {
-					if (selected == null)
-						return;
-					final String regionName =
-							selected.getName().replaceFirst("(?i)\\.l2j$", "");
-					final File texture =
-							new File(dataRoot, "textures/region/" + regionName + ".jpg");
-					preview.setImage(texture.isFile()
-							? new Image(texture.toURI().toString(), 430, 430, true, true, true)
-							: null);
-					previewName.setText(regionName
-							+ (texture.isFile() ? " • textured" : " • height only"));
-				});
-		regions.getSelectionModel().selectFirst();
-		dialog.setResultConverter(button -> button == ButtonType.OK
-				? regions.getSelectionModel().getSelectedItem() : null);
-		dialog.showAndWait().ifPresent(this::loadRegion);
 	}
 
 	private boolean loadRegion(final File file) {
@@ -4220,7 +4157,8 @@ public final class GeoEditorApplication extends Application {
 		final TableColumn<AboutDetail, String> valueColumn = new TableColumn<>("Value");
 		valueColumn.setCellValueFactory(value -> new ReadOnlyStringWrapper(value.getValue().value()));
 		valueColumn.setPrefWidth(470);
-		details.getColumns().addAll(propertyColumn, valueColumn);
+		details.getColumns().add(propertyColumn);
+		details.getColumns().add(valueColumn);
 		details.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 		details.setItems(FXCollections.observableArrayList(
 				new AboutDetail("File description", "Lineage II Geodata Editor"),
@@ -4251,7 +4189,9 @@ public final class GeoEditorApplication extends Application {
 		final TableColumn<AboutControl, String> typeColumn = new TableColumn<>("Type");
 		typeColumn.setCellValueFactory(value -> new ReadOnlyStringWrapper(value.getValue().type()));
 		typeColumn.setPrefWidth(90);
-		controls.getColumns().addAll(actionColumn, controlColumn, typeColumn);
+		controls.getColumns().add(actionColumn);
+		controls.getColumns().add(controlColumn);
+		controls.getColumns().add(typeColumn);
 		controls.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 		final Runnable refreshControls = () -> {
 			final List<AboutControl> rows = new java.util.ArrayList<>();

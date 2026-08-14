@@ -1,52 +1,40 @@
-# Generated distribution and transient build files.
+# GeoEditor: saidas geradas
 **/Build/
-**/BuildModern/
+**/Artifacts/
 
-# Local runtime datasets must never be committed, regardless of their folder.
+# Binarios e arquivos temporarios de compilacao
+**/*.class
+**/*.jar
+**/*.dll
+**/*.exe
+**/*.zip
+*.log
+*.tmp
+hs_err_pid*.log
+
+# Dependencias versionadas necessarias para reconstruir a build
+!Geo_Editor/tools/openjfx/**
+!Geo_Editor/tools/lwjgl/**
+!Geo_Editor/tools/launch4j/**
+
+# Dados locais; o fixture autorizado permanece versionavel
 *.l2j
+!Geo_Editor/src/main/resources/geodata/23_18.l2j
 *.unr
 **/MAPS/
 
-# Local backups and generated binary artifacts.
-**/backups/
-**/bin/
-*.class
-*.jar
-*.dll
-*.exe
-*.zip
-*.7z
-*.rar
-
-# Local Codex/project planning state.
+# Estado local do Codex e filas antigas
 **/.agents/
 **/.codex/
 **/TASKS.md
 **/commit.txt
 
-# IDE and operating-system metadata.
-/.settings/
-/.idea/
-/.vscode/
-/.classpath
-/.project
+# IDE e sistema operacional
+.idea/
+.vscode/
+.settings/
 *.iml
+*.classpath
+*.project
 .DS_Store
 Thumbs.db
-
-# Downloadable external toolchains.
-/AGENTS.md
-**/tools/wix/
-**/tools/launch4j/
-!**/tools/launch4j.xml
-**/tools/openjfx/
-**/tools/lwjgl/
-**/tools/ffmpeg/
-**/tools/compressonator/
-**/tools/sky-source/
-**/tools/imagemagick/
-
-# Temporary diagnostics.
-*.log
-*.tmp
-hs_err_pid*.log

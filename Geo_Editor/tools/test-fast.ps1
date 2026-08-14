@@ -3,7 +3,10 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+$build = Join-Path $root 'Build'
+$createdBuild = -not (Test-Path -LiteralPath $build)
 $classes = Join-Path $root 'Build\classes-test'
+$realGeodata = Join-Path $root 'src\main\resources\geodata\23_18.l2j'
 . (Join-Path $PSScriptRoot 'core-source-files.ps1')
 
 if (Test-Path -LiteralPath $classes) {
@@ -55,7 +58,12 @@ try {
     )
 
     foreach ($testClass in $testClasses) {
-		& java '--enable-native-access=ALL-UNNAMED' -cp $classes $testClass
+		$javaArguments = @('--enable-native-access=ALL-UNNAMED')
+		if ($testClass -eq 'com.geo.RealGeodataFixtureTest') {
+			$javaArguments += "-Dgeoeditor.realGeodata=$realGeodata"
+		}
+		$javaArguments += @('-cp', $classes, $testClass)
+		& java @javaArguments
         if ($LASTEXITCODE -ne 0) {
             throw "$testClass failed with exit code $LASTEXITCODE."
         }
@@ -64,6 +72,10 @@ try {
 finally {
     if (Test-Path -LiteralPath $classes) {
         Remove-Item -LiteralPath $classes -Recurse -Force
+    }
+    if ($createdBuild -and (Test-Path -LiteralPath $build) -and
+        @(Get-ChildItem -LiteralPath $build -Force).Count -eq 0) {
+        Remove-Item -LiteralPath $build -Force
     }
 }
 

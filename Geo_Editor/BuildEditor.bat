@@ -2,40 +2,13 @@
 setlocal
 
 cd /d "%~dp0"
+title GeoEditor Build
 
-echo ============================================================
-echo GeoEditor 2.0.4.31 - Build completa
-echo ============================================================
-
-where java >nul 2>&1
-if errorlevel 1 goto :java_missing
-
-where javac >nul 2>&1
-if errorlevel 1 goto :java_missing
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\build.ps1"
+set "BUILD_EXIT=%ERRORLEVEL%"
 
 echo.
-echo [1/2] Executando testes...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\test-fast.ps1"
-if errorlevel 1 goto :failed
-
-echo.
-echo [2/2] Gerando Build\GeoEditor.exe...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\package-exe.ps1"
-if errorlevel 1 goto :failed
-
-echo.
-echo ============================================================
-echo BUILD CONCLUIDA: %~dp0Build\GeoEditor.exe
-echo ============================================================
-exit /b 0
-
-:java_missing
-echo.
-echo ERRO: Java JDK 25 nao foi encontrado no PATH.
-echo Instale ou configure Java, javac e jar antes de continuar.
-exit /b 1
-
-:failed
-echo.
-echo ERRO: a build foi interrompida. Verifique as mensagens acima.
-exit /b 1
+if not "%BUILD_EXIT%"=="0" echo BUILD FALHOU - consulte o log.
+echo Pressione qualquer tecla para sair...
+pause >nul
+exit /b %BUILD_EXIT%
