@@ -2642,6 +2642,7 @@ public final class GeoEditorApplication extends Application {
 				currentSnapshot.blockType(selectedBlockX, selectedBlockY));
 		final int localGeoX = selectedBlockX * 8 + cellX;
 		final int localGeoY = selectedBlockY * 8 + cellY;
+		updateCoordinates(currentSnapshot, localGeoX, localGeoY);
 		final int count = currentDetails.layerCount(localGeoX, localGeoY);
 		final java.util.ArrayList<String> rows = new java.util.ArrayList<>(count);
 		for (int layer = 0; layer < count; layer++) {
@@ -2655,9 +2656,14 @@ public final class GeoEditorApplication extends Application {
 		heightValue.setText(count == 0 ? "-" : Short.toString(
 				currentDetails.height(localGeoX, localGeoY, count - 1)));
 		layerList.setItems(FXCollections.observableArrayList(rows));
-		if (!rows.isEmpty())
-			layerList.getSelectionModel().select(
-					Math.min(Math.max(0, selectedLayer), rows.size() - 1));
+		if (!rows.isEmpty()) {
+			final int activeLayer = Math.min(Math.max(0, selectedLayer), rows.size() - 1);
+			layerList.getSelectionModel().select(activeLayer);
+			/* Selecting another cell may keep the same ListView index (usually 0),
+			 * so the selection listener is not guaranteed to run. Refresh the
+			 * layer-dependent controls explicitly for every cell click. */
+			updateSelectedLayerNswe(activeLayer);
+		}
 	}
 
 	private void updateSelectedLayerNswe(final int layer) {
@@ -3535,9 +3541,16 @@ public final class GeoEditorApplication extends Application {
 	}
 
 	private void updateCoordinates(final RegionSnapshot snapshot) {
-		final int centerBlock = snapshot.size() / 2;
-		final int geoX = GeoCoordinates.geoFromRegionBlock(snapshot.regionX(), centerBlock);
-		final int geoY = GeoCoordinates.geoFromRegionBlock(snapshot.regionY(), centerBlock);
+		final int centerGeo = (snapshot.size() * 8) / 2;
+		updateCoordinates(snapshot, centerGeo, centerGeo);
+	}
+
+	private void updateCoordinates(final RegionSnapshot snapshot,
+			final int localGeoX, final int localGeoY) {
+		final int geoX = GeoCoordinates.geoFromRegionLocal(
+				snapshot.regionX(), localGeoX);
+		final int geoY = GeoCoordinates.geoFromRegionLocal(
+				snapshot.regionY(), localGeoY);
 		setPair(regionXValue, regionYValue,
 				snapshot.regionX() + 10, snapshot.regionY() + 10);
 		setPair(geoXValue, geoYValue, geoX, geoY);

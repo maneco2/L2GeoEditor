@@ -59,7 +59,8 @@ try {
 
     foreach ($testClass in $testClasses) {
 		$javaArguments = @('--enable-native-access=ALL-UNNAMED')
-		if ($testClass -eq 'com.geo.RealGeodataFixtureTest') {
+		if (($testClass -eq 'com.geo.RealGeodataFixtureTest') -or
+				($testClass -eq 'com.geo.core.RegionSnapshotLoaderTest')) {
 			$javaArguments += "-Dgeoeditor.realGeodata=$realGeodata"
 		}
 		$javaArguments += @('-cp', $classes, $testClass)

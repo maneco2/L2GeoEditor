@@ -45,8 +45,8 @@ final class MapSelectorDialog {
 	private final TextField regionY = field(false);
 	private final TextField geoX = field(false);
 	private final TextField geoY = field(false);
-	private final TextField worldX = field(true);
-	private final TextField worldY = field(true);
+	private final TextField worldX = field(false);
+	private final TextField worldY = field(false);
 	private final Canvas canvas = new Canvas(1, 1);
 	private final StackPane mapPane = new StackPane(canvas);
 	private final Button openButton;
@@ -90,6 +90,8 @@ final class MapSelectorDialog {
 		regionY.setTooltip(new javafx.scene.control.Tooltip("Region Y (10-25)"));
 		geoX.setTooltip(new javafx.scene.control.Tooltip("Absolute Geo X coordinate"));
 		geoY.setTooltip(new javafx.scene.control.Tooltip("Absolute Geo Y coordinate"));
+		worldX.setTooltip(new javafx.scene.control.Tooltip("Absolute World X coordinate"));
+		worldY.setTooltip(new javafx.scene.control.Tooltip("Absolute World Y coordinate"));
 		openButton.setDefaultButton(true);
 		openButton.setOnAction(event -> {
 			if (selectedRegionX < 0 || !regionFile().isFile())
@@ -208,13 +210,17 @@ final class MapSelectorDialog {
 				selectAt(event.getX(), event.getY());
 		});
 		regionX.textProperty().addListener((o, oldValue, newValue) ->
-				updateFromRegionFields());
+				updateFromRegionFields(regionX));
 		regionY.textProperty().addListener((o, oldValue, newValue) ->
-				updateFromRegionFields());
+				updateFromRegionFields(regionY));
 		geoX.textProperty().addListener((o, oldValue, newValue) ->
-				updateFromGeoFields());
+				updateFromGeoFields(geoX));
 		geoY.textProperty().addListener((o, oldValue, newValue) ->
-				updateFromGeoFields());
+				updateFromGeoFields(geoY));
+		worldX.textProperty().addListener((o, oldValue, newValue) ->
+				updateFromWorldFields(worldX));
+		worldY.textProperty().addListener((o, oldValue, newValue) ->
+				updateFromWorldFields(worldY));
 		dialog.getDialogPane().setOnKeyPressed(event -> {
 			if (event.getCode() == KeyCode.ESCAPE) {
 				handleEscape();
@@ -307,6 +313,11 @@ final class MapSelectorDialog {
 	}
 
 	private void showRegion(final int x, final int y) {
+		showRegion(x, y, null, null);
+	}
+
+	private void showRegion(final int x, final int y,
+			final TextField preservedField, final String preservedValue) {
 		selectedRegionX = x;
 		selectedRegionY = y;
 		selectedLocalGeoX = 1024;
@@ -318,7 +329,7 @@ final class MapSelectorDialog {
 		regionView = true;
 		updateAvailability();
 		selectionHeading.setText("Selected Location");
-		updateFields();
+		updateFields(preservedField, preservedValue);
 		draw();
 	}
 
@@ -328,59 +339,90 @@ final class MapSelectorDialog {
 	}
 
 	private void updateFields() {
+		updateFields(null, null);
+	}
+
+	private void updateFields(final TextField preservedField,
+			final String preservedValue) {
 		updating = true;
-		final int absoluteGeoX = (selectedRegionX
-				<< GeoCoordinates.REGION_GEO_SHIFT) + selectedLocalGeoX;
-		final int absoluteGeoY = (selectedRegionY
-				<< GeoCoordinates.REGION_GEO_SHIFT) + selectedLocalGeoY;
+		final int absoluteGeoX = GeoCoordinates.geoFromRegionLocal(
+				selectedRegionX, selectedLocalGeoX);
+		final int absoluteGeoY = GeoCoordinates.geoFromRegionLocal(
+				selectedRegionY, selectedLocalGeoY);
 		regionX.setText(Integer.toString(selectedRegionX + 10));
 		regionY.setText(Integer.toString(selectedRegionY + 10));
 		geoX.setText(Integer.toString(absoluteGeoX));
 		geoY.setText(Integer.toString(absoluteGeoY));
 		worldX.setText(Integer.toString(GeoCoordinates.worldXFromGeo(absoluteGeoX)));
 		worldY.setText(Integer.toString(GeoCoordinates.worldYFromGeo(absoluteGeoY)));
+		if (preservedField != null)
+			preservedField.setText(preservedValue);
 		updating = false;
 	}
 
-	private void updateFromRegionFields() {
+	private void updateFromRegionFields(final TextField sourceField) {
 		if (updating)
 			return;
 		try {
 			final int x = Integer.parseInt(regionX.getText()) - 10;
 			final int y = Integer.parseInt(regionY.getText()) - 10;
 			if (x >= 0 && x < WORLD_COLUMNS && y >= 0 && y < WORLD_ROWS)
-				showRegion(x, y);
+				showRegion(x, y, sourceField, sourceField.getText());
 		} catch (final NumberFormatException ignored) {
 			// Partial input is valid while the user is typing.
 		}
 	}
 
-	private void updateFromGeoFields() {
+	private void updateFromGeoFields(final TextField sourceField) {
 		if (updating)
 			return;
 		try {
 			final int absoluteX = Integer.parseInt(geoX.getText());
 			final int absoluteY = Integer.parseInt(geoY.getText());
-			final int x = absoluteX >> GeoCoordinates.REGION_GEO_SHIFT;
-			final int y = absoluteY >> GeoCoordinates.REGION_GEO_SHIFT;
-			if (x < 0 || x >= WORLD_COLUMNS || y < 0 || y >= WORLD_ROWS)
-				return;
-			selectedRegionX = x;
-			selectedRegionY = y;
-			selectedLocalGeoX = absoluteX & 2047;
-			selectedLocalGeoY = absoluteY & 2047;
-			final File image = new File(dataRoot, "textures/region/"
-					+ (x + 10) + "_" + (y + 10) + ".jpg");
-			regionImage = image.isFile()
-					? new Image(image.toURI().toString(), false) : null;
-			regionView = true;
-			updateAvailability();
-			selectionHeading.setText("Selected Location");
-			updateFields();
-			draw();
+			updateFromAbsoluteGeo(absoluteX, absoluteY,
+					sourceField, sourceField.getText());
 		} catch (final NumberFormatException ignored) {
 			// Partial input is valid while the user is typing.
 		}
+	}
+
+	private void updateFromWorldFields(final TextField sourceField) {
+		if (updating)
+			return;
+		try {
+			final int absoluteWorldX = Integer.parseInt(worldX.getText());
+			final int absoluteWorldY = Integer.parseInt(worldY.getText());
+			updateFromAbsoluteGeo(GeoCoordinates.geoXFromWorld(absoluteWorldX),
+					GeoCoordinates.geoYFromWorld(absoluteWorldY),
+					sourceField, sourceField.getText());
+		} catch (final NumberFormatException ignored) {
+			// Partial input is valid while the user is typing.
+		}
+	}
+
+	private void updateFromAbsoluteGeo(final int absoluteX, final int absoluteY) {
+		updateFromAbsoluteGeo(absoluteX, absoluteY, null, null);
+	}
+
+	private void updateFromAbsoluteGeo(final int absoluteX, final int absoluteY,
+			final TextField preservedField, final String preservedValue) {
+		final int x = GeoCoordinates.regionFromGeo(absoluteX);
+		final int y = GeoCoordinates.regionFromGeo(absoluteY);
+		if (x < 0 || x >= WORLD_COLUMNS || y < 0 || y >= WORLD_ROWS)
+			return;
+		selectedRegionX = x;
+		selectedRegionY = y;
+		selectedLocalGeoX = GeoCoordinates.localGeoFromGeo(absoluteX);
+		selectedLocalGeoY = GeoCoordinates.localGeoFromGeo(absoluteY);
+		final File image = new File(dataRoot, "textures/region/"
+				+ (x + 10) + "_" + (y + 10) + ".jpg");
+		regionImage = image.isFile()
+				? new Image(image.toURI().toString(), false) : null;
+		regionView = true;
+		updateAvailability();
+		selectionHeading.setText("Selected Location");
+		updateFields(preservedField, preservedValue);
+		draw();
 	}
 
 	private void draw() {

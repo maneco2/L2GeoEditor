@@ -51,4 +51,14 @@ public final class GeoCoordinates {
 	public static int geoFromRegionBlock(final int region, final int block) {
 		return (region << REGION_GEO_SHIFT) + (block << BLOCK_CELL_SHIFT);
 	}
+
+	public static int geoFromRegionLocal(final int region, final int localGeo) {
+		if (localGeo < 0 || localGeo >= REGION_GEO_SIZE)
+			throw new IllegalArgumentException("Local geo coordinate out of range: " + localGeo);
+		return (region << REGION_GEO_SHIFT) + localGeo;
+	}
+
+	public static int localGeoFromGeo(final int geo) {
+		return geo & (REGION_GEO_SIZE - 1);
+	}
 }

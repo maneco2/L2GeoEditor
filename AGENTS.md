@@ -5,9 +5,6 @@
 
 `/init`
 
-Root principal confirmado: `.`; o aplicativo
-executavel fica em `.\Geo_Editor`.
-
 Responder em portugues, de forma curta e direta. Usar somente o contexto deste
 checkout. Nenhum worktree temporario foi usado nesta rodada. Nao criar commit,
 push, publicacao ou envio sem autorizacao explicita.
@@ -80,7 +77,7 @@ coordenadas, memoria e politicas usam fixtures deterministicas temporarias.
 
 ## Validated Commands
 
-Executar a partir de `.\Geo_Editor` com Java/JDK 25:
+Executar a partir de `Geo_Editor` com Java/JDK 25:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\test-fast.ps1
@@ -115,8 +112,7 @@ este checkout com outros roots nem usar worktree.
 
 ## Suggested Memory Note
 
-GeoEditor e um editor JavaFX/LWJGL no root fisico
-`.`, com aplicativo em `Geo_Editor`, core legado,
+GeoEditor e um editor JavaFX/LWJGL, com aplicativo em `Geo_Editor`, core legado,
 fixture `23_18.l2j`, build em cinco etapas e handoff em `AGENTS.md`. A arvore
 final remove `Build`/`Artifacts`, preserva os 9 itens operacionais de `tools`
 e versiona os toolchains necessários para a build.
@@ -125,7 +121,7 @@ e versiona os toolchains necessários para a build.
 
 - [x] Root principal fisico confirmado; nenhum worktree usado.
 - [x] Auditoria de source, testes, resources, scripts e referencias concluida.
-- [x] Handoff atualizado em `.\AGENTS.md`.
+- [x] Handoff atualizado em `AGENTS.md`.
 - [x] Handoff legado `docs\codex\project-cleanup` removido.
 - [x] Fixture `23_18` validado por tamanho, hash e quatro fixtures.
 - [x] Suite deterministica passou com 13 testes.
